@@ -1,41 +1,65 @@
+//! Splits an expression into tokens, one at a time and without allocating.
+
 use crate::{Error, ErrorKind, Span};
 
+/// What a token is, borrowing its text from the input when it has any.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Kind<'a> {
+    /// A number literal, parsed later by the number type.
     Number(&'a str),
+    /// A variable, a function or the `mod` keyword.
     Name(&'a str),
+    /// `+`
     Plus,
+    /// `-`
     Minus,
+    /// `*`
     Star,
+    /// `/`
     Slash,
+    /// `%`
     Percent,
+    /// `^` or `**`
     Caret,
+    /// `(`
     LeftParenthesis,
+    /// `)`
     RightParenthesis,
+    /// `,`
     Comma,
+    /// The end of the input, returned again on every later call.
     End,
 }
 
+/// A token and where it is in the input.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct Token<'a> {
+    /// What the token is.
     pub kind: Kind<'a>,
+    /// The bytes of the input it covers.
     pub span: Span,
 }
 
+/// Reads tokens from an input on demand, keeping only a position in it.
 pub(crate) struct Lexer<'a> {
+    /// The whole expression.
     input: &'a str,
+    /// Offset of the next byte to read.
     position: usize,
 }
 
 impl<'a> Lexer<'a> {
+    /// Creates a lexer at the start of `input`.
     pub fn new(input: &'a str) -> Self {
         Self { input, position: 0 }
     }
 
+    /// Returns the byte `offset` bytes after the current position, if any.
     fn byte(&self, offset: usize) -> Option<u8> {
         self.input.as_bytes().get(self.position + offset).copied()
     }
 
+    /// Skips ASCII digits and returns how many there were.
     fn digits(&mut self) -> usize {
         let start = self.position;
         while self.byte(0).is_some_and(|byte| byte.is_ascii_digit()) {
@@ -44,6 +68,9 @@ impl<'a> Lexer<'a> {
         self.position - start
     }
 
+    /// Reads a number literal: digits with an optional fraction and an optional exponent.
+    ///
+    /// The exponent is only read when digits follow the `e`, so `2e` is the number `2` then the name `e`.
     fn number(&mut self) -> Result<Kind<'a>, ErrorKind> {
         let start = self.position;
         let mut digits = self.digits();
@@ -67,6 +94,7 @@ impl<'a> Lexer<'a> {
         Ok(Kind::Number(&self.input[start..self.position]))
     }
 
+    /// Reads a name made of ASCII letters, digits and `_`.
     fn name(&mut self) -> Kind<'a> {
         let start = self.position;
         while self
@@ -78,11 +106,15 @@ impl<'a> Lexer<'a> {
         Kind::Name(&self.input[start..self.position])
     }
 
+    /// Skips a symbol of `length` bytes and returns its `kind`.
     fn symbol(&mut self, kind: Kind<'a>, length: usize) -> Kind<'a> {
         self.position += length;
         kind
     }
 
+    /// Reads the next token, skipping whitespace before it.
+    ///
+    /// An unexpected character is reported with the span of the whole character, even when it is several bytes long.
     pub fn next(&mut self) -> Result<Token<'a>, Error> {
         while self.byte(0).is_some_and(|byte| byte.is_ascii_whitespace()) {
             self.position += 1;
