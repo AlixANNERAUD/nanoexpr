@@ -32,6 +32,13 @@ use crate::{Context, Error, ErrorKind, Evaluator, Number};
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
 pub struct Math;
 
+/// The names of the functions of [`Math`], which take a wrong number of arguments when no other arm matches.
+const FUNCTIONS: [&str; 31] = [
+    "sqrt", "cbrt", "abs", "sign", "exp", "ln", "log2", "log10", "log", "sin", "cos", "tan",
+    "asin", "acos", "atan", "atan2", "sinh", "cosh", "tanh", "asinh", "acosh", "atanh", "floor",
+    "ceil", "round", "trunc", "pow", "hypot", "min", "max", "clamp",
+];
+
 /// Returns whether `value` is neither `NaN` nor infinite.
 fn finite<T: Into<f64>>(value: T) -> bool {
     value.into().is_finite()
@@ -107,12 +114,7 @@ macro_rules! math {
                     ("min", &[first, ref rest @ ..]) => Ok(rest.iter().fold(first, |a, b| a.min(*b))),
                     ("max", &[first, ref rest @ ..]) => Ok(rest.iter().fold(first, |a, b| a.max(*b))),
                     ("clamp", &[x, low, high]) => domain(low <= high, x.max(low).min(high)),
-                    (
-                        "sqrt" | "cbrt" | "abs" | "sign" | "exp" | "ln" | "log2" | "log10" | "log" | "sin" | "cos"
-                        | "tan" | "asin" | "acos" | "atan" | "atan2" | "sinh" | "cosh" | "tanh" | "asinh" | "acosh"
-                        | "atanh" | "floor" | "ceil" | "round" | "trunc" | "pow" | "hypot" | "min" | "max" | "clamp",
-                        _,
-                    ) => Err(ErrorKind::ArgumentCount),
+                    _ if FUNCTIONS.contains(&name) => Err(ErrorKind::ArgumentCount),
                     _ => return None,
                 };
                 Some(result.and_then(|value| {
@@ -188,18 +190,33 @@ impl<const DIGITS: u32, const MAX_EXPONENT: i32> Context<Decimal<DIGITS, MAX_EXP
             ("round", &[x]) => x.round(),
             ("trunc", &[x]) => x.trunc(),
             ("pow", &[x, y]) => x.power(y),
+            ("sqrt", &[x]) => x.sqrt(),
+            ("cbrt", &[x]) => x.cbrt(),
+            ("exp", &[x]) => x.exp(),
+            ("ln", &[x]) => x.ln(),
+            ("log2", &[x]) => x.log2(),
+            ("log10" | "log", &[x]) => x.log10(),
+            ("log", &[x, base]) => x.log(base),
+            ("sin", &[x]) => x.sin(),
+            ("cos", &[x]) => x.cos(),
+            ("tan", &[x]) => x.tan(),
+            ("asin", &[x]) => x.asin(),
+            ("acos", &[x]) => x.acos(),
+            ("atan", &[x]) => x.atan(),
+            ("atan2", &[y, x]) => y.atan2(x),
+            ("sinh", &[x]) => x.sinh(),
+            ("cosh", &[x]) => x.cosh(),
+            ("tanh", &[x]) => x.tanh(),
+            ("asinh", &[x]) => x.asinh(),
+            ("acosh", &[x]) => x.acosh(),
+            ("atanh", &[x]) => x.atanh(),
+            ("hypot", &[x, y]) => x.hypot(y),
             ("min", &[first, ref rest @ ..]) => Ok(rest.iter().fold(first, |a, b| a.min(*b))),
             ("max", &[first, ref rest @ ..]) => Ok(rest.iter().fold(first, |a, b| a.max(*b))),
             ("clamp", &[x, low, high]) if low <= high => Ok(x.clamp(low, high)),
             ("clamp", &[_, _, _]) => Err(ErrorKind::Domain),
-            _ => {
-                let mut values = [0.0; 4];
-                for (value, argument) in values.iter_mut().zip(arguments) {
-                    *value = argument.to_f64();
-                }
-                let values = &values[..arguments.len().min(values.len())];
-                Context::<f64>::call(self, name, values)?.and_then(Decimal::from_f64)
-            }
+            _ if FUNCTIONS.contains(&name) => Err(ErrorKind::ArgumentCount),
+            _ => return None,
         };
         Some(result)
     }
