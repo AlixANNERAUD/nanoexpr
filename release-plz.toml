@@ -42,3 +42,4 @@ git_release_name = "v{{ version }}"
 [[package]]
 name = "nanoexpr-ffi"
 release = false
+publish = false
