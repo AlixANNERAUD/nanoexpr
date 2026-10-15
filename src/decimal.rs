@@ -6,8 +6,11 @@ use core::str::FromStr;
 
 use crate::{ErrorKind, Number};
 
+mod fraction;
 mod functions;
 mod wide;
+
+pub use fraction::Fraction;
 
 /// A decimal floating-point number, as pocket calculators compute with.
 ///

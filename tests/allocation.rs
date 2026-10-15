@@ -71,6 +71,9 @@ fn evaluation_never_allocates() {
             let mut text = [0_u8; 64];
             let mut cursor = std::io::Cursor::new(&mut text[..]);
             std::io::Write::write_fmt(&mut cursor, format_args!("{value:.10}")).unwrap();
+            let sum: nanoexpr::Decimal = nanoexpr::evaluate("1 / 3 + 1 / 6").unwrap();
+            let fraction = sum.to_fraction(9999).unwrap();
+            std::io::Write::write_fmt(&mut cursor, format_args!("{fraction:#}")).unwrap();
         }),
         0
     );

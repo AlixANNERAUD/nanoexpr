@@ -1,6 +1,6 @@
 #![cfg(feature = "decimal")]
 
-use nanoexpr::{Context, Decimal, ErrorKind, Number};
+use nanoexpr::{Context, Decimal, ErrorKind, Fraction, Number};
 
 fn decimal(text: &str) -> Decimal {
     text.parse()
@@ -384,4 +384,64 @@ fn functions_report_domain_errors() {
     assert_eq!(evaluate("exp(-300)"), Ok(<Decimal>::ZERO));
     assert_eq!(evaluate("(-8) ^ 1e20"), Err(ErrorKind::Overflow));
     assert_eq!(shown("(-2) ^ 3 + (-0.5) ^ 1e20"), "-8");
+}
+
+fn fraction_of(text: &str) -> Option<Fraction> {
+    text.parse::<Decimal>().unwrap().to_fraction(9999)
+}
+
+fn fraction_shown(text: &str) -> Option<(String, String)> {
+    fraction_of(text).map(|fraction| (fraction.to_string(), format!("{fraction:#}")))
+}
+
+fn pair(improper: &str, mixed: &str) -> Option<(String, String)> {
+    Some((improper.into(), mixed.into()))
+}
+
+#[test]
+fn finds_simple_fractions() {
+    assert_eq!(fraction_shown("0"), pair("0", "0"));
+    assert_eq!(fraction_shown("0.5"), pair("1/2", "1/2"));
+    assert_eq!(fraction_shown("0.33333333333333"), pair("1/3", "1/3"));
+    assert_eq!(fraction_shown("0.66666666666667"), pair("2/3", "2/3"));
+    assert_eq!(fraction_shown("-3.5"), pair("-7/2", "-3 1/2"));
+    assert_eq!(fraction_shown("0.99999999999999"), pair("1", "1"));
+    assert_eq!(fraction_shown("0.3"), pair("3/10", "3/10"));
+    assert_eq!(
+        fraction_shown("1.0001000100010e-4"),
+        pair("1/9999", "1/9999")
+    );
+    assert_eq!(fraction_shown("123456789"), pair("123456789", "123456789"));
+    assert_eq!(fraction_shown("-42"), pair("-42", "-42"));
+}
+
+#[test]
+fn rejects_numbers_without_a_close_fraction() {
+    assert_eq!(fraction_of("3.1415926535898"), None);
+    assert_eq!(fraction_of("1.4142135623731"), None);
+    assert_eq!(fraction_of("9.9930048965724e-5"), None);
+    assert_eq!(fraction_of("1e30"), None);
+    assert_eq!(fraction_of("1e-50"), None);
+    assert_eq!(fraction_of("0.33333333333336"), None);
+}
+
+#[test]
+fn honours_the_denominator_bound() {
+    let third: Decimal = "0.33333333333333".parse().unwrap();
+    assert_eq!(third.to_fraction(2), None);
+    assert_eq!(
+        third.to_fraction(3),
+        Some(Fraction {
+            negative: false,
+            numerator: 1,
+            denominator: 3,
+        })
+    );
+    let two: Decimal = "2".parse().unwrap();
+    assert_eq!(two.to_fraction(0), None);
+    let half = Decimal::<10, 99>::new(5, -1).unwrap();
+    assert_eq!(
+        half.to_fraction(u64::MAX).map(|f| f.to_string()),
+        Some("1/2".into())
+    );
 }
