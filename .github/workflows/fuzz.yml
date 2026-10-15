@@ -1,0 +1,62 @@
+name: Fuzz
+
+on:
+  pull_request:
+  schedule:
+    - cron: "0 3 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+
+jobs:
+  fuzz:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [evaluate, compile, decimal, fraction, integer, ffi]
+    env:
+      SECONDS_PER_TARGET: ${{ github.event_name == 'pull_request' && 60 || 1800 }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@nightly
+
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-fuzz
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: fuzz
+          key: ${{ matrix.target }}
+
+      - uses: actions/cache@v4
+        with:
+          path: fuzz/corpus/${{ matrix.target }}
+          key: fuzz-corpus-${{ matrix.target }}-${{ github.run_id }}
+          restore-keys: fuzz-corpus-${{ matrix.target }}-
+
+      - name: Build
+        run: cargo fuzz build --target x86_64-unknown-linux-gnu ${{ matrix.target }}
+
+      - name: Fuzz
+        run: |
+          mkdir -p fuzz/corpus/${{ matrix.target }}
+          cargo fuzz run --target x86_64-unknown-linux-gnu ${{ matrix.target }} fuzz/corpus/${{ matrix.target }} fuzz/seeds/${{ matrix.target }} -- -max_total_time=${{ env.SECONDS_PER_TARGET }} -timeout=10
+
+      - name: Upload the failing input
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: artifacts-${{ matrix.target }}
+          path: fuzz/artifacts/${{ matrix.target }}
