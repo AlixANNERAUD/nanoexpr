@@ -3,7 +3,7 @@
 [![crates.io](https://img.shields.io/crates/v/nanoexpr.svg)](https://crates.io/crates/nanoexpr)
 [![docs.rs](https://docs.rs/nanoexpr/badge.svg)](https://docs.rs/nanoexpr)
 [![CI](https://github.com/AlixANNERAUD/nanoexpr/actions/workflows/rust.yml/badge.svg)](https://github.com/AlixANNERAUD/nanoexpr/actions/workflows/rust.yml)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/AlixANNERAUD/nanoexpr/blob/main/LICENSE)
 
 A tiny math expression evaluator for embedded systems: `no_std`, **zero heap allocation**, single pass, with
 pluggable number types, variables and functions.
@@ -176,4 +176,4 @@ compiles expressions first, such as `fasteval` or `exmex`, will be faster.
 
 ## License
 
-[MIT](LICENSE)
+[MIT](https://github.com/AlixANNERAUD/nanoexpr/blob/main/LICENSE)
