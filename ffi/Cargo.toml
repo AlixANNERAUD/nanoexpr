@@ -1,0 +1,21 @@
+[package]
+name = "nanoexpr-ffi"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+description = "C bindings of nanoexpr, a tiny no_std math expression evaluator"
+authors = ["Alix ANNERAUD <alix@anneraud.fr>"]
+license = "MIT"
+repository = "https://github.com/AlixANNERAUD/nanoexpr"
+publish = false
+
+[lib]
+name = "nanoexpr_c"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[features]
+default = ["std"]
+std = []
+
+[dependencies]
+nanoexpr = { path = ".." }

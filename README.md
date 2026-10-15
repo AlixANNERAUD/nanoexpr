@@ -104,6 +104,55 @@ assert_eq!(calculator.evaluate::<f64>("10 mod 4"), Ok(2.0));
 
 The second generic parameter is the most arguments a call can take (8 by default).
 
+## C and C++
+
+The [`ffi`](https://github.com/AlixANNERAUD/nanoexpr/tree/main/ffi) directory of the repository holds C bindings
+that evaluate `double` expressions, still without allocating. Variables and functions come from callbacks, and the
+built-in math functions remain available:
+
+```c
+#include <string.h>
+#include "nanoexpr.h"
+
+static bool variable(void *user_data, const char *name, size_t name_length, double *value) {
+    if (name_length == 3 && memcmp(name, "raw", 3) == 0) {
+        *value = *(const double *)user_data;
+        return true;
+    }
+    return false;
+}
+
+double raw = 2150, result;
+nanoexpr_error error;
+nanoexpr_options options = nanoexpr_default_options();
+options.variable = variable;
+options.user_data = &raw;
+
+const char *input = "raw * 0.0125 - 40";
+if (nanoexpr_evaluate_with(input, strlen(input), &options, &result, &error) != NANOEXPR_OK) {
+    printf("%s at %zu..%zu\n", nanoexpr_status_description(error.kind), error.start, error.end);
+}
+```
+
+The header is [`ffi/include/nanoexpr.h`](https://github.com/AlixANNERAUD/nanoexpr/blob/main/ffi/include/nanoexpr.h).
+With CMake, add the directory and link the `nanoexpr` target, which builds the static library with `cargo`:
+
+```cmake
+add_subdirectory(nanoexpr/ffi)
+target_link_libraries(app PRIVATE nanoexpr)
+```
+
+Without CMake, `cargo build --release -p nanoexpr-ffi` builds `target/release/libnanoexpr_c.a` (and a shared
+library). `cargo rustc --release -p nanoexpr-ffi -- --print native-static-libs` lists the system libraries to link
+with it. For a microcontroller, build without the standard library and link the archive into your firmware:
+
+```sh
+cargo rustc --release -p nanoexpr-ffi --target thumbv7em-none-eabihf --no-default-features --crate-type staticlib
+```
+
+Without `std` the library brings its own panic handler, which loops forever, so build it with `panic = "abort"`, the
+default of bare-metal targets. The evaluator does not panic on any input.
+
 ## Syntax
 
 From the loosest to the tightest binding:

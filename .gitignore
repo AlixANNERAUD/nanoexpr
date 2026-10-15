@@ -2,4 +2,6 @@
 .DS_Store
 .claude/
 /coverage.lcov
+/build/
+/ffi/build/
 /comparison/target/
