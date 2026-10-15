@@ -348,7 +348,7 @@ cargo run --release --features exp-rs --bin bench
 | Feature | Default | Effect |
 |---|---|---|
 | `libm` | ✅ | `Number` for `f32` and `f64`, `Math` and `evaluate`, through the pure Rust [`libm`](https://crates.io/crates/libm) |
-| `decimal` | | The `Decimal` type, and `Math` for it. Enables `libm` |
+| `decimal` | | The `Decimal` type, and `Math` and `evaluate` for it, without `libm` |
 
 ## Frequently asked questions
 
