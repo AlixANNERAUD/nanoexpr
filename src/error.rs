@@ -61,6 +61,11 @@ pub enum ErrorKind {
     ///
     /// [`Program`]: crate::Program
     TooLong,
+    /// A result the number type cannot represent exactly and does not approximate, such as the square root of 2
+    /// or `sin(1)` for a [`Fraction`].
+    ///
+    /// [`Fraction`]: https://docs.rs/nanoexpr/latest/nanoexpr/struct.Fraction.html
+    Inexact,
 }
 
 impl ErrorKind {
@@ -82,6 +87,7 @@ impl ErrorKind {
             Self::TooDeep => "expression nested too deeply",
             Self::Unsupported => "unsupported operation",
             Self::TooLong => "expression too long",
+            Self::Inexact => "inexact result",
         }
     }
 }
