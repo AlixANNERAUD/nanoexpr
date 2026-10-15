@@ -1,40 +1,66 @@
-# nanoexpr
+# nanoexpr: math expression evaluator for embedded Rust
 
 [![crates.io](https://img.shields.io/crates/v/nanoexpr.svg)](https://crates.io/crates/nanoexpr)
 [![docs.rs](https://docs.rs/nanoexpr/badge.svg)](https://docs.rs/nanoexpr)
 [![CI](https://github.com/AlixANNERAUD/nanoexpr/actions/workflows/rust.yml/badge.svg)](https://github.com/AlixANNERAUD/nanoexpr/actions/workflows/rust.yml)
 [![codecov](https://codecov.io/gh/AlixANNERAUD/nanoexpr/graph/badge.svg)](https://codecov.io/gh/AlixANNERAUD/nanoexpr)
+[![no_std](https://img.shields.io/badge/no__std-no%20alloc-success)](https://docs.rs/nanoexpr)
+[![MSRV 1.85](https://img.shields.io/badge/MSRV-1.85-informational)](https://github.com/AlixANNERAUD/nanoexpr/blob/main/Cargo.toml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/AlixANNERAUD/nanoexpr/blob/main/LICENSE)
 
-A tiny math expression evaluator for embedded systems: `no_std`, **zero heap allocation**, single pass, with
-pluggable number types, variables and functions.
+**Parse and evaluate math formulas typed at run time, on a microcontroller, without a heap.** `nanoexpr` is a tiny
+`no_std` math expression parser and evaluator for Rust and C: it computes `"2 * (3 + 4) ^ 2 / sqrt(16)"` in a single
+pass, with **zero heap allocation**, bounded stack use and errors that point at the faulty part of the input.
 
 ```rust
 assert_eq!(nanoexpr::evaluate::<f64>("2 * (3 + 4) ^ 2 / sqrt(16)"), Ok(24.5));
 ```
 
-Use it for calculator apps, sensor formulas configured in the field (`raw * 0.0125 - 40`), thresholds and
-conversions typed by users, or anywhere a whole scripting engine would be too much.
+| At a glance | |
+|---|---|
+| Heap allocations | **0**, checked by a test |
+| Speed | about **270 ns** to parse and evaluate a formula, at least 1.6 times faster than the other crates [measured](#performance) |
+| Size | **6 KiB** of WebAssembly for integers, 46 KiB with `f64` and every math function |
+| Targets | Any `no_std` target: Cortex-M, RISC-V (ESP32-C3), WebAssembly, desktops. Built in CI for each |
+| Numbers | `f32`, `f64`, integers, calculator-exact `Decimal`, or your own type |
+| Languages | Rust, and C or C++ through a CMake project |
+| Dependencies | None, except the optional pure Rust `libm` |
+
+## Why nanoexpr?
+
+Letting users type a formula is common: a calculator app, a sensor conversion set in the field (`raw * 0.0125 - 40`),
+an alarm threshold, a spreadsheet cell, a game stat. Most expression crates are built for desktops: they need `std`,
+allocate a syntax tree and strings on every call, and turn bad input into `NaN` or a panic. On a microcontroller that
+means heap fragmentation, unpredictable memory use and crashes. `nanoexpr` is built for those constraints instead,
+and is faster than the others even on a desktop.
+
+Use it for:
+
+- **Calculator apps** on handhelds, watches and embedded GUIs, with TI-style decimal numbers and a percent key.
+- **Sensor formulas and unit conversions** configured without reflashing the firmware.
+- **Thresholds, scaling and business rules** stored as text in a configuration file or a database.
+- **WebAssembly and plugins**, where a small binary and no allocator matter.
 
 ## Features
 
-- **No heap, ever.** No `alloc`, no AST, no token buffer: the expression is computed while it is parsed. A test
-  with a counting allocator checks it.
+- **No heap, ever.** No `alloc`, no syntax tree, no token buffer: the expression is computed while it is parsed. A
+  test with a counting allocator checks it.
 - **Bounded stack.** Nesting is limited (32 levels by default, configurable) so hostile input cannot overflow the
   stack, and call arguments live in a fixed-size array.
-- **Any number type.** `f32`, `f64`, every primitive integer, or your own type (fixed-point, decimal...) through
-  the `Number` trait. Integers report overflow instead of wrapping.
-- **Variables and functions from your code.** The evaluator asks a `Context` for each name it meets: implement the
-  trait, pass `(name, value)` pairs, or wrap closures. Contexts compose as tuples.
-- **Scientific functions included.** With the default `libm` feature, `Math` provides `pi`, `e`, `sqrt`, `sin`,
-  `log`, `min`, `max`, `clamp` and more for `f32` and `f64`.
-- **Errors you can show.** A `Copy` error with a kind to match on (and translate) and the byte span of the input
-  that caused it. Division by zero, domain errors and overflow are errors, not silent `NaN` or infinities.
+- **Any number type.** `f32`, `f64`, every primitive integer, or your own type (fixed-point...) through the `Number`
+  trait. Integers report overflow instead of wrapping.
 - **Calculator-exact decimals.** The optional `Decimal` type computes in decimal like TI and Casio calculators:
   14 significant digits and exponents up to ±99 by default, so `0.1 + 0.2` is exactly `0.3`.
+- **Variables and functions from your code.** The evaluator asks a `Context` for each name it meets: implement the
+  trait, pass `(name, value)` pairs, or wrap closures. Contexts compose as tuples.
+- **Scientific functions included.** `Math` provides `pi`, `e`, `sqrt`, `sin`, `cos`, `tan`, `exp`, `ln`, `log`,
+  `min`, `max`, `clamp`, rounding and more.
+- **Errors you can show.** A `Copy` error with a kind to match on (and translate) and the byte span of the input
+  that caused it. Division by zero, domain errors and overflow are errors, not silent `NaN` or infinities.
 - **Calculator-friendly syntax.** `^` and `**` are right-associative (`2^3^2 = 512`), `-2^2 = -4`, and `%` can be a
   percentage (`200 * 15% = 30`) instead of the remainder.
-- **No dependencies** besides the optional `libm`, and no `unsafe` code.
+- **C and C++ bindings** with a header and a CMake project, still allocation-free.
+- **No dependencies** besides the optional `libm`, and no `unsafe` code in the evaluator.
 
 ## Usage
 
@@ -220,7 +246,7 @@ Sizes of a WebAssembly module exporting one evaluation function, built with `opt
 
 Most of the `f64` size is `core`'s float parsing, which any crate reading float literals pays for.
 
-## Comparison
+## Comparison with other Rust expression evaluators
 
 How `nanoexpr` compares with other expression evaluators on crates.io, as of their latest release in October 2026:
 
@@ -323,6 +349,23 @@ cargo run --release --features exp-rs --bin bench
 |---|---|---|
 | `libm` | ✅ | `Number` for `f32` and `f64`, `Math` and `evaluate`, through the pure Rust [`libm`](https://crates.io/crates/libm) |
 | `decimal` | | The `Decimal` type, and `Math` for it. Enables `libm` |
+
+## Frequently asked questions
+
+**How do I evaluate a math expression from a string in Rust?** Add `nanoexpr` and call
+`nanoexpr::evaluate::<f64>("1 + 2 * 3")`. Use `evaluate_with` to provide variables and functions.
+
+**Does it work without `std` or an allocator?** Yes. The crate is `#![no_std]`, never uses `alloc`, and needs no
+global allocator, so it runs on bare-metal microcontrollers.
+
+**Why is `0.1 + 0.2` not `0.3`?** With `f64`, no binary float can hold `0.1` exactly. Use the `decimal` feature and
+`Decimal` to compute in decimal like a pocket calculator.
+
+**Can a user crash the device with a malicious formula?** It is designed not to: evaluation never allocates, nesting
+depth is bounded, arithmetic is checked, and malformed, deep or overflowing input returns an error.
+
+**Is it a scripting language?** No: it evaluates numeric expressions only. For strings, booleans and assignments, see
+the [comparison](#comparison-with-other-rust-expression-evaluators) below for crates that do more.
 
 ## License
 
