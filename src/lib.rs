@@ -12,6 +12,8 @@ mod lexer;
 #[cfg(any(feature = "libm", feature = "decimal"))]
 mod math;
 mod number;
+mod parser;
+mod program;
 
 pub use context::{Context, Functions, Variables};
 #[cfg(feature = "decimal")]
@@ -21,3 +23,4 @@ pub use evaluator::{Evaluator, PercentSign, evaluate_with};
 #[cfg(any(feature = "libm", feature = "decimal"))]
 pub use math::{Math, evaluate};
 pub use number::Number;
+pub use program::{Instruction, Program, compile};

@@ -114,6 +114,36 @@ fn row<L: Library>() {
     println!("|");
 }
 
+fn compiled<L: Compiled>() {
+    let mut cells = Vec::new();
+    for (input, expected) in [
+        (ARITHMETIC, 18_446.291_030_953_413),
+        (FUNCTIONS, 14.522_155_439_575_668),
+        (VARIABLES, 16.0),
+    ] {
+        let mut run = L::compile(input);
+        let result = measure(|| run(black_box(1.5), black_box(2.5)));
+        assert!(
+            (result.value - expected).abs() < 1e-6,
+            "{} gave {} for {input}",
+            L::NAME,
+            result.value
+        );
+        cells.push(result);
+    }
+    print!("| {} ", L::NAME);
+    for cell in &cells {
+        print!("| {:.0} ns ", cell.nanoseconds);
+    }
+    for cell in &cells {
+        print!(
+            "| {} / {} B / {} B ",
+            cell.allocations, cell.allocated, cell.peak
+        );
+    }
+    println!("|");
+}
+
 fn main() {
     println!(
         "| Crate | Arithmetic | Functions | Variables | Arithmetic heap | Functions heap | Variables heap |"
@@ -131,4 +161,19 @@ fn main() {
     row::<Exmex>();
     #[cfg(feature = "exp-rs")]
     row::<ExpRs>();
+
+    if cfg!(feature = "exp-rs") {
+        return;
+    }
+    println!();
+    println!(
+        "| Compiled once | Arithmetic | Functions | Variables | Arithmetic heap | Functions heap | Variables heap |"
+    );
+    println!("|---|---|---|---|---|---|---|");
+    #[cfg(feature = "nanoexpr")]
+    compiled::<Nanoexpr>();
+    #[cfg(feature = "fasteval")]
+    compiled::<Fasteval>();
+    #[cfg(feature = "exmex")]
+    compiled::<Exmex>();
 }

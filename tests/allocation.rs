@@ -45,6 +45,22 @@ fn evaluation_never_allocates() {
         allocations(|| evaluate_with::<i64, _>("1 / 0 > 1 || !(0 && x) ? 1 : 2", &context)),
         0
     );
+    assert_eq!(
+        allocations(|| {
+            let mut code = [nanoexpr::Instruction::default(); 32];
+            let program = evaluator
+                .compile::<i64, 16>(
+                    "x > 2 ? -(x + sum(1, 2 * x)) mod 7 + 300% : 1 / 0",
+                    &mut code,
+                )
+                .unwrap();
+            (
+                program.evaluate(&context),
+                program.evaluate(&[("x", 0_i64)]),
+            )
+        }),
+        0
+    );
     #[cfg(feature = "decimal")]
     assert_eq!(
         allocations(|| {
