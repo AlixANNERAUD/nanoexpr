@@ -1,3 +1,5 @@
+//! The [`Number`] trait and its implementations for primitive types.
+
 use crate::ErrorKind;
 
 /// A value type expressions are evaluated in.
@@ -25,6 +27,7 @@ pub trait Number: Copy + Default {
     fn negate(self) -> Result<Self, ErrorKind>;
 }
 
+/// Implements [`Number`] and [`Checked`] for a float type, raising to a power with the `libm` function `$power`.
 #[cfg(feature = "libm")]
 macro_rules! float {
     ($type:ty, $power:path) => {
@@ -83,12 +86,19 @@ macro_rules! float {
     };
 }
 
+/// The float classification [`check`] needs, shared by `f32` and `f64`.
 #[cfg(feature = "libm")]
 trait Checked: Copy {
+    /// Returns whether the value is `NaN`.
     fn is_nan(self) -> bool;
+    /// Returns whether the value is an infinity.
     fn is_infinite(self) -> bool;
 }
 
+/// Turns a `NaN` or infinite `result` of finite operands into an error.
+///
+/// A `NaN` is a [`ErrorKind::Domain`] error and an infinity an [`ErrorKind::Overflow`]. Results of operands that
+/// are already `NaN` or infinite are passed through unchanged.
 #[cfg(feature = "libm")]
 fn check<T: Checked>(left: T, right: T, result: T) -> Result<T, ErrorKind> {
     let finite = |value: T| !value.is_nan() && !value.is_infinite();
@@ -108,6 +118,7 @@ float!(f32, libm::powf);
 #[cfg(feature = "libm")]
 float!(f64, libm::pow);
 
+/// Implements [`Number`] for integer types with checked arithmetic, so overflows are errors instead of wrapping.
 macro_rules! integer {
     ($($type:ty),*) => {$(
         impl Number for $type {
