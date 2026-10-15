@@ -109,7 +109,8 @@ fn expression(random: &mut Random, depth: usize, output: &mut String) {
         }
         9 => {
             expression(random, depth - 1, output);
-            output.push('%');
+            space(random, output);
+            output.push_str(random.pick(&["%", "!", "!!"]));
         }
         _ => {
             expression(random, depth - 1, output);
