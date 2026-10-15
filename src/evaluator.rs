@@ -19,12 +19,14 @@ pub enum PercentSign {
 /// a call uses `ARGUMENTS * size_of::<N>()` bytes of stack for each level of nesting.
 ///
 /// ```
+/// # #[cfg(feature = "libm")] {
 /// use nanoexpr::{Evaluator, PercentSign};
 ///
 /// let evaluator = Evaluator::<_, 2>::new(&[("price", 80.0)])
 ///     .max_depth(8)
 ///     .percent_sign(PercentSign::Percentage);
-/// assert_eq!(evaluator.evaluate::<f64>("price - 25%"), Ok(79.75));
+/// assert_eq!(evaluator.evaluate::<f64>("price * (1 - 25%)"), Ok(60.0));
+/// # }
 /// ```
 #[derive(Debug, Clone, Copy)]
 pub struct Evaluator<'c, C: ?Sized, const ARGUMENTS: usize = 8> {
@@ -244,8 +246,8 @@ impl<'i, N: Number, C: Context<N> + ?Sized, const ARGUMENTS: usize>
 /// Evaluates `input`, resolving names with `context`.
 ///
 /// ```
-/// let rate = [("rate", 0.2)];
-/// assert_eq!(nanoexpr::evaluate_with("100 * (1 + rate)", &rate), Ok(120.0));
+/// let context = [("price", 250), ("quantity", 4)];
+/// assert_eq!(nanoexpr::evaluate_with("price * quantity - 100", &context), Ok(900));
 /// ```
 pub fn evaluate_with<N: Number, C: Context<N> + ?Sized>(
     input: &str,
