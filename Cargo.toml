@@ -3,14 +3,14 @@ name = "nanoexpr"
 version = "0.1.0"
 edition = "2024"
 rust-version = "1.85"
-description = "Tiny no_std math expression evaluator for embedded: zero heap allocation, single pass, pluggable number types, variables and functions"
+description = "Fast no_std math expression parser and evaluator with zero heap allocation: formulas with variables and functions for microcontrollers, WebAssembly and C, in f32, f64, integers or calculator-exact decimals"
 authors = ["Alix ANNERAUD <alix@anneraud.fr>"]
 license = "MIT"
 repository = "https://github.com/AlixANNERAUD/nanoexpr"
 homepage = "https://github.com/AlixANNERAUD/nanoexpr"
 documentation = "https://docs.rs/nanoexpr"
 readme = "README.md"
-keywords = ["expression", "evaluator", "calculator", "no-std", "embedded"]
+keywords = ["math", "expression", "calculator", "no-std", "embedded"]
 categories = ["embedded", "no-std", "no-std::no-alloc", "mathematics", "parser-implementations"]
 include = ["/src", "/tests", "/README.md", "/LICENSE", "/CHANGELOG.md"]
 
