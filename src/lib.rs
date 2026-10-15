@@ -1,4 +1,5 @@
 #![no_std]
+#![cfg_attr(feature = "libm", doc = include_str!("../README.md"))]
 #![forbid(unsafe_code)]
 
 mod context;
