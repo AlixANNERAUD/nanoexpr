@@ -3,6 +3,7 @@
 
 mod context;
 mod error;
+mod lexer;
 mod number;
 
 pub use context::{Context, Functions, Variables};
