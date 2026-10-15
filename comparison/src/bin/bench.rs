@@ -5,6 +5,7 @@ use std::time::Instant;
 
 use comparison::*;
 
+#[cfg_attr(feature = "exp-rs", allow(dead_code))]
 struct Counting;
 
 static ALLOCATIONS: AtomicUsize = AtomicUsize::new(0);

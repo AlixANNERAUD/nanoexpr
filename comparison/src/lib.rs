@@ -150,8 +150,9 @@ impl Library for ExpRs {
 }
 
 #[cfg(feature = "size")]
+#[allow(clippy::missing_safety_doc)]
 #[unsafe(no_mangle)]
-pub extern "C" fn evaluate(pointer: *const u8, length: usize) -> f64 {
+pub unsafe extern "C" fn evaluate(pointer: *const u8, length: usize) -> f64 {
     let input =
         unsafe { core::str::from_utf8_unchecked(core::slice::from_raw_parts(pointer, length)) };
     #[cfg(feature = "nanoexpr")]
@@ -166,4 +167,8 @@ pub extern "C" fn evaluate(pointer: *const u8, length: usize) -> f64 {
     return Exmex::new().evaluate(input);
     #[cfg(feature = "exp-rs")]
     return ExpRs::new().evaluate(input);
+    #[allow(unreachable_code)]
+    {
+        input.len().checked_sub(1).unwrap() as f64
+    }
 }
