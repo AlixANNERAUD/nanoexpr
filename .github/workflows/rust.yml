@@ -80,6 +80,9 @@ jobs:
       - name: Build with decimals
         run: cargo build --target ${{ matrix.target }} --features decimal
 
+      - name: Build with exact results
+        run: cargo build --target ${{ matrix.target }} --no-default-features --features exact
+
       - name: Build with fractions only
         run: cargo build --target ${{ matrix.target }} --no-default-features --features fraction
 

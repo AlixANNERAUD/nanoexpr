@@ -22,7 +22,7 @@ assert_eq!(nanoexpr::evaluate::<f64>("2 * (3 + 4) ^ 2 / sqrt(16)"), Ok(24.5));
 | Speed | about **290 ns** to parse and evaluate a formula, at least 1.4 times faster than the other crates, or **40 ns** compiled once [measured](#performance) |
 | Size | **6 KiB** of WebAssembly for integers, 46 KiB with `f64` and every math function |
 | Targets | Any `no_std` target: Cortex-M, RISC-V (ESP32-C3), WebAssembly, desktops. Built in CI for each |
-| Numbers | `f32`, `f64`, integers, calculator-exact `Decimal`, exact `Fraction`, or your own type |
+| Numbers | `f32`, `f64`, integers, calculator-exact `Decimal`, exact `Fraction`, both at once like a TI-84 CE, or your own type |
 | Languages | Rust, and C or C++ through a CMake project |
 | Dependencies | None, except the optional pure Rust `libm` |
 
@@ -53,7 +53,8 @@ Use it for:
   14 significant digits and exponents up to ±99 by default, so `0.1 + 0.2` is exactly `0.3`, and turns results
   into fractions like the `►Frac` key: `1/3 + 1/6` is `1/2`.
 - **Exact fractions.** The optional `Fraction` type computes with rational numbers exactly, so `1/3 + 1/6` is
-  exactly `1/2`, and reports results it cannot represent instead of rounding them.
+  exactly `1/2`, and `Exact` keeps results as fractions while they are exact and turns them into decimals when they
+  are not, like a TI-84 CE.
 - **Variables and functions from your code.** The evaluator asks a `Context` for each name it meets: implement the
   trait, pass `(name, value)` pairs, or wrap closures. Contexts compose as tuples.
 - **Scientific functions included.** `Math` provides `pi`, `e`, `sqrt`, `sin`, `cos`, `tan`, `exp`, `ln`, `log`,
@@ -290,6 +291,47 @@ as `pi` are errors, as `Fraction` never approximates. `Fraction` parses from tex
 and with the `decimal` feature to and from `Decimal`. Checks against Python's `fractions` module on 4,000 random
 expressions show the results, overflows included, match.
 
+### Fractions, like a TI-84 CE
+
+Calculators such as the TI-84 Plus CE or the Casio ClassWiz keep results exact while they can: `1/3 + 1/6` shows
+`1/2`, while `sqrt(2)` shows `1.4142135623731`. nanoexpr has the three pieces of that:
+
+- `Decimal::to_fraction`, the `►Frac` key, finds the fraction a decimal result stands for.
+- `Fraction` computes exactly, and reports what it cannot represent.
+- With the `exact` feature, `Exact` is a fraction while the result is exact, and becomes a `Decimal` when it
+  overflows 64 bits or is irrational, such as `sqrt(2)`, `sin(1)` or `pi`. Once decimal, it stays decimal.
+
+```toml
+[dependencies]
+nanoexpr = { version = "0.1", features = ["exact"] }
+```
+
+```rust
+# #[cfg(feature = "exact")] {
+use nanoexpr::Exact;
+
+let sum: Exact = nanoexpr::evaluate("1/3 + 1/6").unwrap();
+assert!(sum.is_exact());
+assert_eq!(sum.to_string(), "1/2");
+assert_eq!(sum.to_decimal().to_string(), "0.5");
+
+let root: Exact = nanoexpr::evaluate("sqrt(4/9) + 0.1 + 0.2").unwrap();
+assert_eq!(root.to_string(), "29/30");
+assert_eq!(format!("{:#}", nanoexpr::evaluate::<Exact>("7/2").unwrap()), "3 1/2");
+
+let mixed: Exact = nanoexpr::evaluate("1/3 + sqrt(2)").unwrap();
+assert!(!mixed.is_exact());
+assert_eq!(mixed.to_string(), "1.7475468957064");
+assert_eq!(format!("{mixed:.10}"), "1.747546896");
+# }
+```
+
+Typed decimals are exact when they fit a fraction, so `0.1 + 0.2` is `3/10`, as on a Casio ClassWiz; a TI-84 Plus
+CE keeps them as decimals. Fractions display as `n/d`, or as mixed numbers with `{:#}`, and decimals round to the
+precision asked for, such as `{:.10}`. `is_exact`, `as_fraction`, `as_decimal` and `to_decimal` tell the forms
+apart. Errors and their spans are the same as with `Decimal`, and `Math` computes each function exactly when its
+arguments are fractions and its result is exact, and in decimal otherwise.
+
 ## C and C++
 
 The [`ffi`](https://github.com/AlixANNERAUD/nanoexpr/tree/main/ffi) directory of the repository holds C bindings
@@ -505,6 +547,7 @@ cargo run --release --features exp-rs --bin bench
 | `libm` | ✅ | `Number` for `f32` and `f64`, `Math` and `evaluate`, through the pure Rust [`libm`](https://crates.io/crates/libm) |
 | `decimal` | | The `Decimal` type, and `Math` and `evaluate` for it, without `libm`. Enables `fraction` |
 | `fraction` | | The exact `Fraction` type, and `Math` and `evaluate` for it, without `libm` |
+| `exact` | | The `Exact` type, a fraction while exact and a `Decimal` otherwise. Enables `decimal` and `fraction` |
 
 ## Frequently asked questions
 
