@@ -3,6 +3,7 @@
 use super::Decimal;
 use super::wide::{self, Wide};
 use crate::ErrorKind;
+use crate::number::MAX_FACTORIAL;
 
 /// Returns `Ok(())` when `valid`, and a [`ErrorKind::Domain`] error otherwise.
 fn domain(valid: bool) -> Result<(), ErrorKind> {
@@ -42,6 +43,27 @@ impl<const DIGITS: u32, const MAX_EXPONENT: i32> Decimal<DIGITS, MAX_EXPONENT> {
                 .map_or(0, |divisor| u128::from(self.coefficient) / divisor),
         };
         self.is_integer() && integer % 2 == 1
+    }
+
+    /// Returns `self!`, multiplying the integers up to `self` in [`Wide`] and rounding once.
+    ///
+    /// Products are exact while they fit 36 digits, so results are correctly rounded except in rare cases, which
+    /// are one unit in the last place away. Integers above [`MAX_FACTORIAL`] are [`ErrorKind::Overflow`] errors,
+    /// like those whose factorial is beyond the exponent range.
+    pub(super) fn fact(self) -> Result<Self, ErrorKind> {
+        domain(self.is_integer() && (!self.negative || self.is_zero()))?;
+        let last = self
+            .to_integer()
+            .filter(|last| last.unsigned_abs() <= MAX_FACTORIAL as u64)
+            .ok_or(ErrorKind::Overflow)?;
+        let mut product = Wide::ONE;
+        for factor in 2..=last {
+            product = product.mul(Wide::integer(factor));
+            if product.parts().2 > i64::from(MAX_EXPONENT) {
+                return Err(ErrorKind::Overflow);
+            }
+        }
+        Self::from_wide(product)
     }
 
     /// Returns `self` raised to the power `exponent`.

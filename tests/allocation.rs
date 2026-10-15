@@ -65,7 +65,7 @@ fn evaluation_never_allocates() {
     assert_eq!(
         allocations(|| {
             let value: nanoexpr::Decimal = nanoexpr::evaluate(
-                "1 / 3 * 3 + sqrt(2) - 0.1 + sin(1e22) * ln(2) + atan2(1, 2) ^ 0.5",
+                "1 / 3 * 3 + sqrt(2) - 0.1 + sin(1e22) * ln(2) + atan2(1, 2) ^ 0.5 + 69! / fact(68)",
             )
             .unwrap();
             let mut text = [0_u8; 64];
@@ -81,7 +81,7 @@ fn evaluation_never_allocates() {
     assert_eq!(
         allocations(|| {
             let value: nanoexpr::Fraction = nanoexpr::evaluate(
-                "(1/3 + 1/6) * 0.75 - sqrt(4/9) ^ 3 % 1/7 + max(round(7/2), floor(-1/3))",
+                "(1/3 + 1/6) * 0.75 - sqrt(4/9) ^ 3 % 1/7 + max(round(7/2), floor(-1/3)) + 20! / fact(19)",
             )
             .unwrap();
             let error = nanoexpr::evaluate::<nanoexpr::Fraction>("sqrt(2) + 1").unwrap_err();
@@ -98,8 +98,10 @@ fn evaluation_never_allocates() {
         allocations(|| {
             let fraction: nanoexpr::Exact =
                 nanoexpr::evaluate("(1/3 + 1/6) * 0.75 - sqrt(4/9) + max(1/3, 0.2)").unwrap();
-            let decimal: nanoexpr::Exact =
-                nanoexpr::evaluate("1/3 + sqrt(2) + (2 ^ 62) / 3 * 7 + (1/3) ^ 100 + pi").unwrap();
+            let decimal: nanoexpr::Exact = nanoexpr::evaluate(
+                "1/3 + sqrt(2) + (2 ^ 62) / 3 * 7 + (1/3) ^ 100 + pi + 21! - fact(20)",
+            )
+            .unwrap();
             let error = nanoexpr::evaluate::<nanoexpr::Exact>("sqrt(-2)").unwrap_err();
             let mut text = [0_u8; 96];
             let mut cursor = std::io::Cursor::new(&mut text[..]);
@@ -117,7 +119,7 @@ fn evaluation_never_allocates() {
     #[cfg(feature = "libm")]
     assert_eq!(
         allocations(|| nanoexpr::evaluate::<f64>(
-            "sqrt(2) * sin(pi / 4) + log(8, 2) + max(1, 2, 3)"
+            "sqrt(2) * sin(pi / 4) + log(8, 2) + max(1, 2, 3) + 5! - fact(3)"
         )),
         0
     );

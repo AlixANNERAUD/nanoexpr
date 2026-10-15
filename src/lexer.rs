@@ -43,7 +43,7 @@ pub(crate) enum Kind<'a> {
     And,
     /// `||`
     Or,
-    /// `!`
+    /// `!`, a logical not before an operand and a factorial after one.
     Not,
     /// `?`
     Question,

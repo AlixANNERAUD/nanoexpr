@@ -32,6 +32,7 @@ enum Tree {
     Negate(Box<Tree>),
     Plus(Box<Tree>),
     Not(Box<Tree>),
+    Factorial(Box<Tree>),
     Binary(Operator, Box<Tree>, Box<Tree>),
     Conditional(Box<Tree>, Box<Tree>, Box<Tree>),
 }
@@ -40,12 +41,13 @@ fn tree(input: &mut Unstructured<'_>, depth: u32) -> arbitrary::Result<Tree> {
     let choice = if depth == 0 {
         0
     } else {
-        input.int_in_range(0..=3)?
+        input.int_in_range(0..=4)?
     };
     Ok(match choice {
         0 => Tree::Literal(input.arbitrary()?),
         1 => Tree::Negate(Box::new(tree(input, depth - 1)?)),
         2 => Tree::Plus(Box::new(tree(input, depth - 1)?)),
+        3 => Tree::Factorial(Box::new(tree(input, depth - 1)?)),
         _ => Tree::Binary(
             input.arbitrary()?,
             Box::new(tree(input, depth - 1)?),
@@ -113,6 +115,11 @@ fn render<N: Integer>(tree: &Tree, text: &mut String, spaced: bool) {
             render::<N>(operand, text, spaced);
             text.push(')');
         }
+        Tree::Factorial(operand) => {
+            text.push('(');
+            render::<N>(operand, text, spaced);
+            write!(text, "{space}!)").unwrap();
+        }
         Tree::Conditional(condition, then, otherwise) => {
             text.push('(');
             render::<N>(condition, text, spaced);
@@ -163,6 +170,21 @@ fn compute<N: Integer>(tree: &Tree) -> Result<N, ErrorKind> {
         }
         Tree::Plus(operand) => compute(operand),
         Tree::Not(operand) => Ok(boolean(compute::<N>(operand)?.zero())),
+        Tree::Factorial(operand) => {
+            let value = compute::<N>(operand)?;
+            if value.is_negative() {
+                return Err(ErrorKind::Domain);
+            }
+            let mut product = boolean::<N>(true);
+            let mut factor = boolean::<N>(false);
+            while factor < value {
+                factor = factor
+                    .checked_add(boolean(true))
+                    .ok_or(ErrorKind::Overflow)?;
+                product = product.checked_mul(factor).ok_or(ErrorKind::Overflow)?;
+            }
+            Ok(product)
+        }
         Tree::Conditional(condition, then, otherwise) => {
             if compute::<N>(condition)?.zero() {
                 compute(otherwise)

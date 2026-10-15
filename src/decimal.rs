@@ -473,6 +473,10 @@ impl<const DIGITS: u32, const MAX_EXPONENT: i32> Number for Decimal<DIGITS, MAX_
     fn from_bool(value: bool) -> Result<Self, ErrorKind> {
         Ok(if value { Self::one() } else { Self::ZERO })
     }
+
+    fn factorial(self) -> Result<Self, ErrorKind> {
+        self.fact()
+    }
 }
 
 impl<const DIGITS: u32, const MAX_EXPONENT: i32> PartialOrd for Decimal<DIGITS, MAX_EXPONENT> {
