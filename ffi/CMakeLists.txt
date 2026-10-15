@@ -3,6 +3,7 @@ cmake_minimum_required(VERSION 3.21)
 project(nanoexpr LANGUAGES C)
 
 option(NANOEXPR_BUILD_TESTS "Build the tests of nanoexpr" ${PROJECT_IS_TOP_LEVEL})
+option(NANOEXPR_BUILD_EXAMPLES "Build the examples of nanoexpr" ${PROJECT_IS_TOP_LEVEL})
 set(NANOEXPR_CARGO_TARGET "" CACHE STRING "Rust target triple to build nanoexpr for, empty for the host")
 set(NANOEXPR_CARGO_FLAGS "" CACHE STRING "Extra arguments of cargo build, such as --no-default-features")
 
@@ -60,4 +61,16 @@ if(NANOEXPR_BUILD_TESTS)
     target_compile_options(nanoexpr_test PRIVATE
         $<$<C_COMPILER_ID:GNU,Clang,AppleClang>:-Wall -Wextra -Wpedantic -Werror>)
     add_test(NAME nanoexpr_test COMMAND nanoexpr_test)
+endif()
+
+if(NANOEXPR_BUILD_EXAMPLES)
+    add_executable(nanoexpr_calculator examples/calculator.c)
+    target_link_libraries(nanoexpr_calculator PRIVATE nanoexpr)
+    set_target_properties(nanoexpr_calculator PROPERTIES C_STANDARD 99 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+    target_compile_options(nanoexpr_calculator PRIVATE
+        $<$<C_COMPILER_ID:GNU,Clang,AppleClang>:-Wall -Wextra -Wpedantic -Werror>)
+    if(NANOEXPR_BUILD_TESTS)
+        add_test(NAME nanoexpr_calculator COMMAND nanoexpr_calculator "discount(price * quantity, 25)")
+        set_tests_properties(nanoexpr_calculator PROPERTIES PASS_REGULAR_EXPRESSION "^180\n$")
+    endif()
 endif()
