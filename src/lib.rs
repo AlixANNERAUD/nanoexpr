@@ -12,6 +12,7 @@ mod lexer;
 #[cfg(any(feature = "libm", feature = "decimal"))]
 mod math;
 mod number;
+mod parser;
 
 pub use context::{Context, Functions, Variables};
 #[cfg(feature = "decimal")]
