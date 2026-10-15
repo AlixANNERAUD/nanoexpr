@@ -3,6 +3,7 @@
 [![crates.io](https://img.shields.io/crates/v/nanoexpr.svg)](https://crates.io/crates/nanoexpr)
 [![docs.rs](https://docs.rs/nanoexpr/badge.svg)](https://docs.rs/nanoexpr)
 [![CI](https://github.com/AlixANNERAUD/nanoexpr/actions/workflows/rust.yml/badge.svg)](https://github.com/AlixANNERAUD/nanoexpr/actions/workflows/rust.yml)
+[![codecov](https://codecov.io/gh/AlixANNERAUD/nanoexpr/graph/badge.svg)](https://codecov.io/gh/AlixANNERAUD/nanoexpr)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/AlixANNERAUD/nanoexpr/blob/main/LICENSE)
 
 A tiny math expression evaluator for embedded systems: `no_std`, **zero heap allocation**, single pass, with
