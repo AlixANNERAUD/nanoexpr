@@ -29,4 +29,4 @@ all-features = true
 
 [workspace]
 members = [".", "ffi"]
-exclude = ["comparison"]
+exclude = ["comparison", "fuzz"]

@@ -168,3 +168,18 @@ fn floats() {
     assert_eq!(evaluator.evaluate::<f64>("200 * 15%"), Ok(30.0));
     assert_eq!(evaluator.evaluate::<f64>("-50%"), Ok(-0.5));
 }
+
+#[cfg(feature = "libm")]
+#[test]
+fn float_literals_beyond_the_range_are_invalid() {
+    assert_eq!(
+        evaluate_with::<f32, _>("2E223", &()).unwrap_err(),
+        Error::new(ErrorKind::InvalidNumber, Span::new(0, 5))
+    );
+    assert_eq!(
+        evaluate_with::<f64, _>("1 + 1e309", &()).unwrap_err(),
+        Error::new(ErrorKind::InvalidNumber, Span::new(4, 9))
+    );
+    assert_eq!(evaluate_with::<f64, _>("1e-400", &()), Ok(0.0));
+    assert_eq!(evaluate_with::<f32, _>("3.4e38", &()), Ok(3.4e38));
+}

@@ -53,6 +53,9 @@ jobs:
       - name: Test without libm
         run: cargo test --no-default-features --lib --tests
 
+      - name: Test stack use with optimizations
+        run: cargo test --release --all-features --test stack
+
   embedded:
     runs-on: ubuntu-latest
     strategy:

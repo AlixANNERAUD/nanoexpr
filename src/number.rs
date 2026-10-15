@@ -64,7 +64,10 @@ macro_rules! float {
     ($type:ty, $power:path) => {
         impl Number for $type {
             fn parse(literal: &str) -> Option<Self> {
-                literal.parse().ok()
+                literal
+                    .parse()
+                    .ok()
+                    .filter(|value: &$type| value.is_finite())
             }
 
             fn add(self, rhs: Self) -> Result<Self, ErrorKind> {

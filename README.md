@@ -560,8 +560,13 @@ global allocator, so it runs on bare-metal microcontrollers.
 **Why is `0.1 + 0.2` not `0.3`?** With `f64`, no binary float can hold `0.1` exactly. Use the `decimal` feature and
 `Decimal` to compute in decimal like a pocket calculator.
 
-**Can a user crash the device with a malicious formula?** It is designed not to: evaluation never allocates, nesting
-depth is bounded, arithmetic is checked, and malformed, deep or overflowing input returns an error.
+**Can a user crash the device with a malicious formula?** No: evaluation never allocates, nesting depth is bounded,
+arithmetic is checked, and malformed, deep or overflowing input returns an error. The evaluator, compiled programs,
+every number type and the C bindings are fuzzed with [`cargo-fuzz`](https://github.com/rust-fuzz/cargo-fuzz) on every
+pull request and every week, looking for panics, overflows, hangs and wrong results. The stack is the one resource to
+plan for: at the default depth of 32, the most deeply nested input needs about 15 KiB of stack in `f64`, 21 KiB in
+`Decimal` and 27 KiB in `Fraction` and `Exact` in an optimized 64-bit build, and a test checks it fits in 64 KiB.
+Builds without optimizations need several times more. Lower `max_depth` for a smaller stack.
 
 **Is it a scripting language?** No: it evaluates numeric expressions only, though comparisons, `&&`, `||` and
 `? :` are enough for thresholds and rules. For strings, booleans and assignments, see
