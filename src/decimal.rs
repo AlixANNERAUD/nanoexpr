@@ -10,8 +10,6 @@ mod fraction;
 mod functions;
 mod wide;
 
-pub use fraction::Fraction;
-
 /// A decimal floating-point number, as pocket calculators compute with.
 ///
 /// The value is a coefficient of `DIGITS` significant decimal digits times a power of ten, with a scientific exponent

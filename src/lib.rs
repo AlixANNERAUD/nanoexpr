@@ -8,8 +8,10 @@ mod context;
 mod decimal;
 mod error;
 mod evaluator;
+#[cfg(feature = "fraction")]
+mod fraction;
 mod lexer;
-#[cfg(any(feature = "libm", feature = "decimal"))]
+#[cfg(any(feature = "libm", feature = "fraction"))]
 mod math;
 mod number;
 mod parser;
@@ -17,10 +19,12 @@ mod program;
 
 pub use context::{Context, Functions, Variables};
 #[cfg(feature = "decimal")]
-pub use decimal::{Decimal, Fraction, ParseDecimalError};
+pub use decimal::{Decimal, ParseDecimalError};
 pub use error::{Error, ErrorKind, Span};
 pub use evaluator::{Evaluator, PercentSign, evaluate_with};
-#[cfg(any(feature = "libm", feature = "decimal"))]
+#[cfg(feature = "fraction")]
+pub use fraction::{Fraction, ParseFractionError};
+#[cfg(any(feature = "libm", feature = "fraction"))]
 pub use math::{Math, evaluate};
 pub use number::Number;
 pub use program::{Instruction, Program, compile};

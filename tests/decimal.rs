@@ -431,11 +431,7 @@ fn honours_the_denominator_bound() {
     assert_eq!(third.to_fraction(2), None);
     assert_eq!(
         third.to_fraction(3),
-        Some(Fraction {
-            negative: false,
-            numerator: 1,
-            denominator: 3,
-        })
+        Some(Fraction::new(false, 1, 3).unwrap())
     );
     let two: Decimal = "2".parse().unwrap();
     assert_eq!(two.to_fraction(0), None);

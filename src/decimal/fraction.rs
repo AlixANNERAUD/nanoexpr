@@ -1,48 +1,8 @@
-//! Fractions that decimal numbers are close to, like the `►Frac` key of TI calculators.
+//! Conversions between [`Decimal`] and [`Fraction`], such as the fraction a decimal is close to, like the `►Frac`
+//! key of TI calculators.
 
-use core::fmt;
-
-use super::{Decimal, power_of_ten};
-
-/// A fraction in lowest terms, such as `-7/2`, as found by [`Decimal::to_fraction`].
-///
-/// It displays as `7/2`, as `3` when its denominator is 1, or as a mixed number such as `3 1/2` with the alternate
-/// flag `{:#}`.
-///
-/// ```
-/// use nanoexpr::Fraction;
-///
-/// let fraction = Fraction { negative: true, numerator: 7, denominator: 2 };
-/// assert_eq!(fraction.to_string(), "-7/2");
-/// assert_eq!(format!("{fraction:#}"), "-3 1/2");
-/// ```
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct Fraction {
-    /// Whether the fraction is below zero, never set for zero.
-    pub negative: bool,
-    /// The numerator, without its sign.
-    pub numerator: u64,
-    /// The denominator, at least 1.
-    pub denominator: u64,
-}
-
-impl fmt::Display for Fraction {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if self.negative {
-            formatter.write_str("-")?;
-        }
-        let denominator = self.denominator.max(1);
-        let whole = self.numerator / denominator;
-        let rest = self.numerator % denominator;
-        if rest == 0 {
-            write!(formatter, "{whole}")
-        } else if formatter.alternate() && whole > 0 {
-            write!(formatter, "{whole} {rest}/{denominator}")
-        } else {
-            write!(formatter, "{}/{denominator}", self.numerator)
-        }
-    }
-}
+use super::{Decimal, digit_count, power_of_ten};
+use crate::{ErrorKind, Fraction};
 
 impl<const DIGITS: u32, const MAX_EXPONENT: i32> Decimal<DIGITS, MAX_EXPONENT> {
     /// Returns the simplest fraction with a denominator up to `max_denominator` that the number is, to within one
@@ -73,11 +33,9 @@ impl<const DIGITS: u32, const MAX_EXPONENT: i32> Decimal<DIGITS, MAX_EXPONENT> {
         if self.exponent >= 0 {
             let scale = power_of_ten_checked(self.exponent.unsigned_abs())?;
             let numerator = u64::try_from(coefficient.checked_mul(scale)?).ok()?;
-            return (max_denominator >= 1).then_some(Fraction {
-                negative,
-                numerator,
-                denominator: 1,
-            });
+            return Fraction::new(negative, numerator, 1)
+                .ok()
+                .filter(|_| max_denominator >= 1);
         }
         let scale = power_of_ten_checked(self.exponent.unsigned_abs())?;
         let bound = u128::from(max_denominator);
@@ -96,11 +54,12 @@ impl<const DIGITS: u32, const MAX_EXPONENT: i32> Decimal<DIGITS, MAX_EXPONENT> {
                 .checked_mul(scale)?
                 .abs_diff(coefficient.checked_mul(denominator)?);
             if difference <= denominator {
-                return Some(Fraction {
-                    negative: negative && numerator != 0,
-                    numerator: u64::try_from(numerator).ok()?,
-                    denominator: u64::try_from(denominator).ok()?,
-                });
+                return Fraction::new(
+                    negative,
+                    u64::try_from(numerator).ok()?,
+                    u64::try_from(denominator).ok()?,
+                )
+                .ok();
             }
         }
         None
@@ -110,4 +69,65 @@ impl<const DIGITS: u32, const MAX_EXPONENT: i32> Decimal<DIGITS, MAX_EXPONENT> {
 /// Returns `10^exponent`, or `None` beyond `u128`.
 fn power_of_ten_checked(exponent: u32) -> Option<u128> {
     (exponent <= 38).then(|| power_of_ten(exponent))
+}
+
+impl<const DIGITS: u32, const MAX_EXPONENT: i32> Decimal<DIGITS, MAX_EXPONENT> {
+    /// Returns `numerator / denominator`, below zero if `negative`, correctly rounded to `DIGITS` digits.
+    ///
+    /// The quotient is computed by long division until it has two digits more than `DIGITS`, and the remainder
+    /// left breaks ties, so the result is rounded once, half to even.
+    fn from_ratio(negative: bool, numerator: u128, denominator: u128) -> Result<Self, ErrorKind> {
+        if denominator == 0 {
+            return Err(ErrorKind::DivisionByZero);
+        }
+        let mut coefficient = numerator / denominator;
+        let mut remainder = numerator % denominator;
+        let mut exponent: i64 = 0;
+        while remainder != 0 && digit_count(coefficient) < DIGITS + 2 {
+            let Some(scaled) = remainder.checked_mul(10) else {
+                break;
+            };
+            coefficient = coefficient * 10 + scaled / denominator;
+            remainder = scaled % denominator;
+            exponent -= 1;
+        }
+        Self::from_parts(negative, coefficient, exponent, remainder != 0)
+    }
+}
+
+impl<const DIGITS: u32, const MAX_EXPONENT: i32> TryFrom<Fraction>
+    for Decimal<DIGITS, MAX_EXPONENT>
+{
+    type Error = ErrorKind;
+
+    /// Returns the fraction correctly rounded to `DIGITS` digits, half to even.
+    ///
+    /// Fractions beyond the exponent range, which takes a `MAX_EXPONENT` below 19, are [`ErrorKind::Overflow`]
+    /// errors, or zero when they are too small.
+    fn try_from(value: Fraction) -> Result<Self, Self::Error> {
+        Self::from_ratio(
+            value.is_negative(),
+            u128::from(value.numerator()),
+            u128::from(value.denominator()),
+        )
+    }
+}
+
+impl<const DIGITS: u32, const MAX_EXPONENT: i32> TryFrom<Decimal<DIGITS, MAX_EXPONENT>>
+    for Fraction
+{
+    type Error = ErrorKind;
+
+    /// Returns the exact value of the decimal, such as `1/8` for `0.125`, or an [`ErrorKind::Overflow`] error if
+    /// its numerator or denominator does not fit.
+    ///
+    /// To find the simple fraction a rounded result such as `0.33333333333333` stands for, use
+    /// [`Decimal::to_fraction`] instead.
+    fn try_from(value: Decimal<DIGITS, MAX_EXPONENT>) -> Result<Self, Self::Error> {
+        Self::from_decimal(
+            value.negative,
+            u128::from(value.coefficient),
+            i64::from(value.exponent),
+        )
+    }
 }
