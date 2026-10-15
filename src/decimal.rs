@@ -208,7 +208,11 @@ impl<const DIGITS: u32, const MAX_EXPONENT: i32> Decimal<DIGITS, MAX_EXPONENT> {
         let mut buffer = Buffer::<64>::new();
         let _ = write!(buffer, "{:.36e}", value.abs());
         let magnitude = Self::parse_magnitude(buffer.as_str()).ok_or(ErrorKind::Overflow)??;
-        Ok(if value < 0.0 { magnitude.flip() } else { magnitude })
+        Ok(if value < 0.0 {
+            magnitude.flip()
+        } else {
+            magnitude
+        })
     }
 
     /// Returns the number with the opposite sign, keeping zero positive.
@@ -360,7 +364,8 @@ impl<const DIGITS: u32, const MAX_EXPONENT: i32> Decimal<DIGITS, MAX_EXPONENT> {
             return None;
         }
         let magnitude = if self.exponent >= 0 {
-            u128::from(self.coefficient).checked_mul(10_u128.checked_pow(self.exponent.unsigned_abs())?)?
+            u128::from(self.coefficient)
+                .checked_mul(10_u128.checked_pow(self.exponent.unsigned_abs())?)?
         } else {
             u128::from(self.coefficient) / power_of_ten(self.exponent.unsigned_abs())
         };
@@ -378,9 +383,16 @@ impl<const DIGITS: u32, const MAX_EXPONENT: i32> Decimal<DIGITS, MAX_EXPONENT> {
             (0, u128::from(self.coefficient))
         } else {
             let divisor = power_of_ten(shift);
-            (u128::from(self.coefficient) / divisor, u128::from(self.coefficient) % divisor)
+            (
+                u128::from(self.coefficient) / divisor,
+                u128::from(self.coefficient) % divisor,
+            )
         };
-        let half = if shift > DIGITS { 0 } else { power_of_ten(shift) / 2 };
+        let half = if shift > DIGITS {
+            0
+        } else {
+            power_of_ten(shift) / 2
+        };
         let away = match rounding {
             Rounding::Toward => false,
             Rounding::Down => self.negative && rest != 0,
@@ -606,9 +618,6 @@ impl<const DIGITS: u32, const MAX_EXPONENT: i32> fmt::Display for Decimal<DIGITS
         let digits = digits.as_str().trim_end_matches('0');
         let digits = if digits.is_empty() { "0" } else { digits };
         let mut text = Buffer::<48>::new();
-        if self.negative {
-            text.write_char('-')?;
-        }
         if (-5..i32::try_from(shown).unwrap_or(i32::MAX)).contains(&exponent) {
             if exponent < 0 {
                 text.write_str("0.")?;
@@ -636,7 +645,7 @@ impl<const DIGITS: u32, const MAX_EXPONENT: i32> fmt::Display for Decimal<DIGITS
             }
             write!(text, "e{exponent}")?;
         }
-        formatter.pad(text.as_str())
+        formatter.pad_integral(!self.negative, "", text.as_str())
     }
 }
 
