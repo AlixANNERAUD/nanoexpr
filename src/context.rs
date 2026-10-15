@@ -1,3 +1,5 @@
+//! The [`Context`] trait and the contexts built from pairs, tuples and closures.
+
 use crate::ErrorKind;
 
 /// Resolves the variables and functions an expression refers to.

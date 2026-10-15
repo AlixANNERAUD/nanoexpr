@@ -1,3 +1,5 @@
+//! Errors and the spans of input they point to.
+
 use core::fmt;
 
 /// Byte range of the input an [`Error`] points to.

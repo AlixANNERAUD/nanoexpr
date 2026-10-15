@@ -1,3 +1,5 @@
+//! The [`Math`] context of constants and scientific functions, and [`evaluate`] that uses it.
+
 use crate::{Context, Error, ErrorKind, Evaluator, Number};
 
 /// The usual constants and functions of a scientific calculator, for `f32` and `f64`.
@@ -28,21 +30,31 @@ use crate::{Context, Error, ErrorKind, Evaluator, Number};
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
 pub struct Math;
 
+/// Returns whether `value` is neither `NaN` nor infinite.
 fn finite<T: Into<f64>>(value: T) -> bool {
     value.into().is_finite()
 }
 
+/// Implements [`Context`] for a float type on [`Math`].
+///
+/// `$module` gathers wrappers named after the functions they implement, which call the `libm` function of the
+/// right precision: `unary` ones take one argument and `binary` ones two.
 macro_rules! math {
     (
         $type:ident in $module:ident,
         unary: [$($unary:ident = $unary_libm:ident),* $(,)?],
         binary: [$($binary:ident = $binary_libm:ident),* $(,)?] $(,)?
     ) => {
+        #[doc = concat!("`libm` functions for `", stringify!($type), "`, under the names expressions use.")]
         mod $module {
-            $(pub(super) fn $unary(x: $type) -> $type {
+            $(
+            #[doc = concat!("Calls `libm::", stringify!($unary_libm), "`.")]
+            pub(super) fn $unary(x: $type) -> $type {
                 libm::$unary_libm(x)
             })*
-            $(pub(super) fn $binary(x: $type, y: $type) -> $type {
+            $(
+            #[doc = concat!("Calls `libm::", stringify!($binary_libm), "`.")]
+            pub(super) fn $binary(x: $type, y: $type) -> $type {
                 libm::$binary_libm(x, y)
             })*
         }
