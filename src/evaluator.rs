@@ -86,8 +86,8 @@ impl<'c, C: ?Sized, const ARGUMENTS: usize> Evaluator<'c, C, ARGUMENTS> {
     /// Off by default. When on, `2pi`, `2x`, `3sqrt(4)`, `2(3 + 4)`, `(1 + 2)(3 + 4)` and `x y` are products.
     /// Implicit multiplication has the precedence of `*`, as on TI calculators, so `1/2x` is `(1/2) * x` and
     /// `2x^2` is `2 * x^2`. A name directly followed by `(` remains a call: `x(2)` calls the function `x`. A number
-    /// does not multiply the operand before it, so `2 3` and `x 2` stay errors, and `2e3` is still the number
-    /// `2000` while `2e` is `2 * e`.
+    /// does not multiply the operand before it, so `2 3`, `x 2` and `3!2` stay errors, and `2e3` is still the
+    /// number `2000` while `2e` is `2 * e`.
     ///
     /// ```
     /// # #[cfg(feature = "libm")] {

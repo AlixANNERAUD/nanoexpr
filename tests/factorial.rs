@@ -1,6 +1,8 @@
 #![cfg(any(feature = "libm", feature = "fraction"))]
 
-use nanoexpr::{Context, ErrorKind, Math, Number};
+use nanoexpr::{
+    Context, Error, ErrorKind, Evaluator, Instruction, Math, Number, PercentSign, Program, Span,
+};
 
 fn evaluate<N: Number>(input: &str) -> Result<N, ErrorKind>
 where
@@ -39,7 +41,6 @@ fn integers() {
 #[cfg(feature = "libm")]
 #[test]
 fn floats() {
-    use nanoexpr::{Error, Span};
     assert_eq!(evaluate::<f64>("fact(0)"), Ok(1.0));
     assert_eq!(evaluate::<f64>("fact(1)"), Ok(1.0));
     assert_eq!(evaluate::<f64>("fact(5)"), Ok(120.0));
@@ -126,4 +127,208 @@ fn exact_numbers() {
     assert_eq!(evaluate::<Exact>("fact(-1)"), Err(ErrorKind::Domain));
     assert_eq!(evaluate::<Exact>("fact(1/2)"), Err(ErrorKind::Domain));
     assert_eq!(evaluate::<Exact>("fact(pi)"), Err(ErrorKind::Domain));
+}
+
+fn integer(input: &str) -> Result<i64, Error> {
+    Evaluator::<()>::new(&()).evaluate(input)
+}
+
+fn calculator(input: &str) -> Result<i64, Error> {
+    let context = [("x", 3), ("y", 4)];
+    Evaluator::<_>::new(&context)
+        .implicit_multiplication(true)
+        .percent_sign(PercentSign::Percentage)
+        .evaluate(input)
+}
+
+#[test]
+fn postfix_operator() {
+    for (input, expected) in [
+        ("0!", 1),
+        ("1!", 1),
+        ("5!", 120),
+        ("20!", 2_432_902_008_176_640_000),
+        ("5 !", 120),
+        ("(1 + 2)!", 6),
+        ("2 * 3!", 12),
+        ("3! * 2", 12),
+        ("3! + 4!", 30),
+        ("2^3!", 64),
+        ("2 ** 3!", 64),
+        ("3!^2", 36),
+        ("-3!", -6),
+        ("--3!", 6),
+        ("3!!", 720),
+        ("(3!)!", 720),
+        ("!0", 1),
+        ("!3!", 0),
+        ("!0!", 0),
+        ("!!3", 1),
+        ("10 mod 3!", 4),
+        ("3! > 5", 1),
+        ("0! ? 3! : 4!", 6),
+    ] {
+        assert_eq!(integer(input), Ok(expected), "{input}");
+    }
+}
+
+#[test]
+fn postfix_errors_cover_the_operand_and_the_sign() {
+    for (input, kind, start, end) in [
+        ("(-1)!", ErrorKind::Domain, 0, 5),
+        ("1 + (0 - 2)!", ErrorKind::Domain, 4, 12),
+        ("21!", ErrorKind::Overflow, 0, 3),
+        ("2 * 21 !", ErrorKind::Overflow, 4, 8),
+        ("-21!", ErrorKind::Overflow, 1, 4),
+        ("2^21!", ErrorKind::Overflow, 2, 5),
+        ("(-1)! + 1 / 0", ErrorKind::Domain, 0, 5),
+        ("3!!!", ErrorKind::Overflow, 0, 4),
+        ("!", ErrorKind::UnexpectedEnd, 1, 1),
+        ("3 + !", ErrorKind::UnexpectedEnd, 5, 5),
+        ("!3 !2", ErrorKind::UnexpectedToken, 4, 5),
+        ("3!2", ErrorKind::UnexpectedToken, 2, 3),
+        ("5!==120", ErrorKind::UnexpectedCharacter, 3, 4),
+        ("5! = 120", ErrorKind::UnexpectedCharacter, 3, 4),
+    ] {
+        assert_eq!(
+            integer(input),
+            Err(Error::new(kind, Span::new(start, end))),
+            "{input}"
+        );
+    }
+}
+
+#[test]
+fn not_equal_is_read_first() {
+    assert_eq!(integer("5!=3"), Ok(1));
+    assert_eq!(integer("5!=5"), Ok(0));
+    assert_eq!(integer("5! == 120"), Ok(1));
+    assert_eq!(integer("(5!)==120"), Ok(1));
+    assert_eq!(integer("3!!=720"), Ok(1));
+    assert_eq!(integer("3!! == 720"), Ok(1));
+}
+
+#[test]
+fn skipped_operands_are_not_computed() {
+    for (input, expected) in [
+        ("0 && (-1)!", 0),
+        ("1 || 21!", 1),
+        ("0 ? 21! : 2", 2),
+        ("1 ? 2 : (-1)!", 2),
+        ("0 && 3!!!", 0),
+    ] {
+        assert_eq!(integer(input), Ok(expected), "{input}");
+    }
+}
+
+#[test]
+fn implicit_multiplication_and_percentages() {
+    for (input, expected) in [
+        ("3!x", 18),
+        ("3! x", 18),
+        ("2x!", 12),
+        ("x!y", 24),
+        ("x!y!", 144),
+        ("3!(2)", 12),
+        ("2(3)!", 12),
+        ("(1 + 1)(2)!", 4),
+        ("200%!", 2),
+        ("5!%", 1),
+    ] {
+        assert_eq!(calculator(input), Ok(expected), "{input}");
+    }
+    assert_eq!(
+        calculator("3!2"),
+        Err(Error::new(ErrorKind::UnexpectedToken, Span::new(2, 3)))
+    );
+    assert_eq!(
+        calculator("x !2"),
+        Err(Error::new(ErrorKind::UnexpectedToken, Span::new(3, 4)))
+    );
+    assert_eq!(
+        integer("3!x"),
+        Err(Error::new(ErrorKind::UnexpectedToken, Span::new(2, 3)))
+    );
+}
+
+#[test]
+fn long_chains_do_not_nest() {
+    let ones = "1".to_string() + &"!".repeat(10_000);
+    assert_eq!(integer(&ones), Ok(1));
+    let threes = "3".to_string() + &"!".repeat(10_000);
+    assert_eq!(
+        integer(&threes),
+        Err(Error::new(ErrorKind::Overflow, Span::new(0, 4)))
+    );
+}
+
+#[test]
+fn compiled_programs() {
+    let mut code = [Instruction::default(); 16];
+    let program: Program<i64> = nanoexpr::compile("x! + 1", &mut code).unwrap();
+    assert_eq!(program.evaluate(&[("x", 5)]), Ok(121));
+    assert_eq!(program.evaluate(&[("x", 0)]), Ok(2));
+    assert_eq!(
+        program.evaluate(&[("x", -1)]),
+        Err(Error::new(ErrorKind::Domain, Span::new(0, 2)))
+    );
+    assert_eq!(
+        program.evaluate(&[("x", 21)]),
+        Err(Error::new(ErrorKind::Overflow, Span::new(0, 2)))
+    );
+    let length = |input, code: &mut [Instruction<'_, i64>]| {
+        nanoexpr::compile::<i64, 8>(input, code).map(|program| program.len())
+    };
+    assert_eq!(length("3!! + 2^3!", &mut code), Ok(1));
+    assert_eq!(length("(-1)!", &mut code), Ok(2));
+    let program: Program<i64> = nanoexpr::compile("x && (-1)!", &mut code).unwrap();
+    assert_eq!(program.evaluate(&[("x", 0)]), Ok(0));
+    assert_eq!(
+        program.evaluate(&[("x", 1)]),
+        Err(Error::new(ErrorKind::Domain, Span::new(5, 10)))
+    );
+}
+
+#[cfg(feature = "libm")]
+#[test]
+fn postfix_floats() {
+    assert_eq!(nanoexpr::evaluate::<f64>("170! == fact(170)"), Ok(1.0));
+    assert_eq!(nanoexpr::evaluate::<f64>("5! / 4!"), Ok(5.0));
+    assert_eq!(evaluate::<f64>("171!"), Err(ErrorKind::Overflow));
+    assert_eq!(evaluate::<f64>("2.5!"), Err(ErrorKind::Domain));
+    assert_eq!(evaluate::<f64>("pi!"), Err(ErrorKind::Domain));
+    assert_eq!(evaluate::<f32>("35!"), Err(ErrorKind::Overflow));
+}
+
+#[cfg(feature = "decimal")]
+#[test]
+fn postfix_decimals() {
+    use nanoexpr::Decimal;
+    assert_eq!(shown::<Decimal>("69!"), "1.7112245242814e98");
+    assert_eq!(shown::<Decimal>("69! / 68!"), "69");
+    assert_eq!(evaluate::<Decimal>("70!"), Err(ErrorKind::Overflow));
+    assert_eq!(evaluate::<Decimal>("0.5!"), Err(ErrorKind::Domain));
+}
+
+#[cfg(feature = "fraction")]
+#[test]
+fn postfix_fractions() {
+    use nanoexpr::Fraction;
+    assert_eq!(shown::<Fraction>("20! / 18!"), "380");
+    assert_eq!(shown::<Fraction>("(4/2)!"), "2");
+    assert_eq!(evaluate::<Fraction>("21!"), Err(ErrorKind::Overflow));
+    assert_eq!(evaluate::<Fraction>("(1/2)!"), Err(ErrorKind::Domain));
+}
+
+#[cfg(feature = "exact")]
+#[test]
+fn postfix_exact_numbers() {
+    use nanoexpr::Exact;
+    let value = |input: &str| evaluate::<Exact>(input).unwrap();
+    assert!(value("20!").is_exact());
+    assert!(!value("21!").is_exact());
+    assert_eq!(value("21!").to_string(), "5.1090942171709e19");
+    assert_eq!(value("21! == fact(21)").to_string(), "1");
+    assert_eq!(evaluate::<Exact>("(1/2)!"), Err(ErrorKind::Domain));
+    assert_eq!(evaluate::<Exact>("70!"), Err(ErrorKind::Overflow));
 }

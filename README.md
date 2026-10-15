@@ -58,12 +58,12 @@ Use it for:
 - **Variables and functions from your code.** The evaluator asks a `Context` for each name it meets: implement the
   trait, pass `(name, value)` pairs, or wrap closures. Contexts compose as tuples.
 - **Scientific functions included.** `Math` provides `pi`, `e`, `sqrt`, `sin`, `cos`, `tan`, `exp`, `ln`, `log`,
-  `min`, `max`, `clamp`, rounding and more.
+  `min`, `max`, `clamp`, `fact`, rounding and more.
 - **Errors you can show.** A `Copy` error with a kind to match on (and translate) and the byte span of the input
   that caused it. Division by zero, domain errors and overflow are errors, not silent `NaN` or infinities.
-- **Calculator-friendly syntax.** `^` and `**` are right-associative (`2^3^2 = 512`), `-2^2 = -4`, `%` can be a
-  percentage (`200 * 15% = 30`) instead of the remainder, and implicit multiplication (`2pi`, `3(x + 1)`) can be
-  turned on.
+- **Calculator-friendly syntax.** `^` and `**` are right-associative (`2^3^2 = 512`), `-2^2 = -4`, `5!` is a
+  factorial, `%` can be a percentage (`200 * 15% = 30`) instead of the remainder, and implicit multiplication
+  (`2pi`, `3(x + 1)`) can be turned on.
 - **Comparisons and logic for rules.** `<`, `==`, `&&`, `||`, `!` and `c ? a : b` with C precedences, giving `1` or
   `0`, and short-circuiting so `x != 0 && 1 / x > 2` is no division by zero.
 - **Compile once, evaluate many times.** A formula can be compiled into a buffer you provide and evaluated again
@@ -396,8 +396,15 @@ From the loosest to the tightest binding:
 | `*` `/` `%` `mod` | Multiplication, division, remainder | Left |
 | `-x` `+x` `!x` | Negation, unary plus, logical not | Prefix |
 | `^` `**` | Power | Right |
-| `x%` | Percentage, with `PercentSign::Percentage` | Postfix |
+| `x%` `n!` | Percentage, with `PercentSign::Percentage`, and factorial | Postfix |
 | `( )` `name(a, b)` | Grouping, function call | |
+
+Postfix operators bind tightest, as on TI calculators: `2^3!` is `2^(3!) = 64`, `-3!` is `-(3!) = -6` and `3!!` is
+`(3!)! = 720`. The factorial `n!`, also `fact(n)` with `Math`, takes a non-negative integer, otherwise it is a
+`Domain` error, and is an `Overflow` error when the result does not fit, such as above `170!` in `f64`, `20!` in
+`i64` and `69!` in `Decimal`. A `!` after an operand is a factorial and before one a logical not, so `!3!` is
+`!(3!) = 0`. `!=` is always read as not equal, so `5!=3` is `5 != 3`: write `5! == 120` or `(5!) == 120` to compare
+a factorial.
 
 Numbers are written `42`, `3.14`, `.5`, `5.` or `1.5e-3`. Names start with a letter or `_` and continue with
 letters, digits or `_`.
@@ -405,7 +412,8 @@ letters, digits or `_`.
 With `implicit_multiplication(true)`, off by default, a name or a `(` directly after an operand multiplies it, as on
 a calculator: `2pi`, `2x`, `3sqrt(4)`, `2(3 + 4)`, `(1 + 2)(3 + 4)` and `x y` are products. It has the precedence of
 `*`, as on TI calculators, so `1/2x` is `(1/2) * x`. A name followed by `(` stays a call, so `x(2)` calls `x`, and a
-number never multiplies implicitly, so `2 3` is still an error. `2e3` is the number `2000`, `2e` is `2 * e`.
+number never multiplies implicitly, so `2 3` and `3!2` are still errors while `3!x` is `3! * x`. `2e3` is the number
+`2000`, `2e` is `2 * e`.
 
 Values are always numbers, as on TI calculators and in C: comparisons give `1` or `0`, and `&&`, `||`, `!` and
 `? :` read zero as false and anything else as true. The precedences are those of C, so equality binds looser than

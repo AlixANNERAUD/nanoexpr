@@ -81,6 +81,8 @@ pub(crate) enum Unary {
     Not,
     /// A postfix `%` percentage.
     Percentage,
+    /// A postfix `!` factorial.
+    Factorial,
 }
 
 impl Unary {
@@ -90,6 +92,7 @@ impl Unary {
             Self::Negate => operand.negate(),
             Self::Not => N::from_bool(operand.is_zero()?),
             Self::Percentage => operand.divide(N::parse("100").ok_or(ErrorKind::Overflow)?),
+            Self::Factorial => operand.factorial(),
         }
     }
 }
@@ -107,8 +110,8 @@ enum Operator {
     Or,
     /// `? :`, which has a middle operand and skips the branch not taken.
     Conditional,
-    /// A postfix `%` percentage, which has no right operand.
-    Percentage,
+    /// A postfix `%` percentage or `!` factorial, which has no right operand.
+    Postfix(Unary),
 }
 
 /// Binding powers of the conditional `? :`, the loosest operator: the left one is higher, so it associates to the
@@ -131,8 +134,9 @@ const MULTIPLICATIVE: (u8, u8) = (13, 14);
 const UNARY: u8 = 15;
 /// Binding powers of `^`: the left one is higher, so it associates to the right and `2^3^2` is `2^(3^2)`.
 const POWER: (u8, u8) = (18, 17);
-/// Binding power of a postfix `%` percentage, the tightest of all.
-const PERCENTAGE: u8 = 19;
+/// Binding power of a postfix `%` percentage or `!` factorial, the tightest of all: `2^3!` is `2^(3!)` and `-3!` is
+/// `-(3!)`, as on TI calculators.
+const POSTFIX: u8 = 19;
 
 /// What is done with each operation as soon as it is parsed.
 ///
@@ -246,6 +250,7 @@ impl<'i, B: Backend<'i>, const ARGUMENTS: usize> Parser<'i, B, ARGUMENTS> {
     /// Returns the infix or postfix operator of the current token and its binding powers, if it is one.
     fn infix(&self) -> Option<(Operator, (u8, u8))> {
         let binary = |operator, powers| Some((Operator::Binary(operator), powers));
+        let postfix = |operator| Some((Operator::Postfix(operator), (POSTFIX, POSTFIX)));
         match self.token.kind {
             Kind::Plus => binary(Binary::Add, ADDITIVE),
             Kind::Minus => binary(Binary::Subtract, ADDITIVE),
@@ -253,7 +258,7 @@ impl<'i, B: Backend<'i>, const ARGUMENTS: usize> Parser<'i, B, ARGUMENTS> {
             Kind::Slash => binary(Binary::Divide, MULTIPLICATIVE),
             Kind::Percent => match self.syntax.percent_sign {
                 PercentSign::Remainder => binary(Binary::Remainder, MULTIPLICATIVE),
-                PercentSign::Percentage => Some((Operator::Percentage, (PERCENTAGE, PERCENTAGE))),
+                PercentSign::Percentage => postfix(Unary::Percentage),
             },
             Kind::Name("mod") => binary(Binary::Remainder, MULTIPLICATIVE),
             Kind::Caret => binary(Binary::Power, POWER),
@@ -266,6 +271,7 @@ impl<'i, B: Backend<'i>, const ARGUMENTS: usize> Parser<'i, B, ARGUMENTS> {
             Kind::And => Some((Operator::And, AND)),
             Kind::Or => Some((Operator::Or, OR)),
             Kind::Question => Some((Operator::Conditional, CONDITIONAL)),
+            Kind::Not => postfix(Unary::Factorial),
             Kind::Name(_) | Kind::LeftParenthesis if self.syntax.implicit_multiplication => {
                 Some((Operator::Implicit, MULTIPLICATIVE))
             }
@@ -302,9 +308,8 @@ impl<'i, B: Backend<'i>, const ARGUMENTS: usize> Parser<'i, B, ARGUMENTS> {
                     self.backend
                         .binary(Binary::Multiply, left, right, self.from(start))?
                 }
-                Operator::Percentage => {
-                    self.backend
-                        .unary(Unary::Percentage, left, self.from(start))?
+                Operator::Postfix(operator) => {
+                    self.backend.unary(operator, left, self.from(start))?
                 }
                 Operator::And | Operator::Or => {
                     let or = matches!(operator, Operator::Or);
