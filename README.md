@@ -19,7 +19,7 @@ assert_eq!(nanoexpr::evaluate::<f64>("2 * (3 + 4) ^ 2 / sqrt(16)"), Ok(24.5));
 | At a glance | |
 |---|---|
 | Heap allocations | **0**, checked by a test |
-| Speed | about **270 ns** to parse and evaluate a formula, at least 1.6 times faster than the other crates [measured](#performance) |
+| Speed | about **290 ns** to parse and evaluate a formula, at least 1.4 times faster than the other crates, or **40 ns** compiled once [measured](#performance) |
 | Size | **6 KiB** of WebAssembly for integers, 46 KiB with `f64` and every math function |
 | Targets | Any `no_std` target: Cortex-M, RISC-V (ESP32-C3), WebAssembly, desktops. Built in CI for each |
 | Numbers | `f32`, `f64`, integers, calculator-exact `Decimal`, or your own type |
@@ -62,6 +62,8 @@ Use it for:
   turned on.
 - **Comparisons and logic for rules.** `<`, `==`, `&&`, `||`, `!` and `c ? a : b` with C precedences, giving `1` or
   `0`, and short-circuiting so `x != 0 && 1 / x > 2` is no division by zero.
+- **Compile once, evaluate many times.** A formula can be compiled into a buffer you provide and evaluated again
+  with new variables in tens of nanoseconds, still without a heap.
 - **C and C++ bindings** with a header and a CMake project, still allocation-free.
 - **No dependencies** besides the optional `libm`, and no `unsafe` code in the evaluator.
 
@@ -149,6 +151,30 @@ assert_eq!(calculator.evaluate::<f64>("2(3 + 4)sqrt(4)"), Ok(28.0));
 ```
 
 The second generic parameter is the most arguments a call can take (8 by default).
+
+### Compile once, evaluate many times
+
+To evaluate the same formula again and again, such as a sensor conversion at each reading, compile it once into a
+buffer of instructions you provide, then evaluate the program with each new context. Compiling checks the syntax,
+reports the same errors as `evaluate` would for the text, and computes operations on constants once. Evaluating
+only runs the instructions, with a stack of values of fixed size, so it never allocates either:
+
+```rust
+use nanoexpr::{Instruction, Math, Program};
+
+let mut code = [Instruction::default(); 32];
+let program: Program<f64> = nanoexpr::compile("raw * (5 / 400) - 40", &mut code).unwrap();
+
+for (raw, celsius) in [(4000.0, 10.0), (4800.0, 20.0)] {
+    assert_eq!(program.evaluate(&([("raw", raw)], Math)), Ok(celsius));
+}
+```
+
+Variables and functions are resolved by the context at each evaluation, and a program gives exactly the results
+and errors, with the same spans, as `evaluate` on the same text. `Evaluator::compile` applies the settings of an
+evaluator, such as `percent_sign` or `implicit_multiplication`. A buffer too small for the program, or a formula
+that needs more pending values than the stack holds (`Program<f64, 32>` by default), is an `ErrorKind::TooLong`
+error.
 
 ### Decimal numbers, like a pocket calculator
 
@@ -329,8 +355,8 @@ And what each is best at:
 | [exp-rs] | An embedded evaluator with a C API and an allocator you control |
 | [maschen] | Building your own evaluator on top of a shunting-yard |
 
-`nanoexpr` parses each time it evaluates. To evaluate the same formula millions of times on a desktop, a crate that
-compiles expressions first, such as `fasteval` or `exmex`, will be faster.
+To evaluate the same formula many times, `nanoexpr`, `fasteval` and `exmex` can all compile it once: see the
+[measurements](#performance).
 
 [meval]: https://crates.io/crates/meval
 [evalexpr]: https://crates.io/crates/evalexpr
@@ -353,12 +379,26 @@ Median time per evaluation:
 
 | Crate | Arithmetic | Functions | Variables |
 |---|---|---|---|
-| **nanoexpr** | **270 ns** | **270 ns** | **140 ns** |
-| meval 0.2.0 | 1340 ns | 1330 ns | 710 ns |
-| evalexpr 13.1.0 | 2370 ns | 3310 ns | 2090 ns |
-| fasteval 0.2.4 | 430 ns | 650 ns | 350 ns |
-| exmex 0.21.0 | 3460 ns | 3570 ns | 6330 ns |
-| exp-rs 0.2.0 | 3080 ns | 2940 ns | 3070 ns |
+| **nanoexpr** | **290 ns** | **270 ns** | **160 ns** |
+| meval 0.2.0 | 1340 ns | 1330 ns | 700 ns |
+| evalexpr 13.1.0 | 2220 ns | 3050 ns | 2030 ns |
+| fasteval 0.2.4 | 420 ns | 650 ns | 340 ns |
+| exmex 0.21.0 | 3440 ns | 3420 ns | 6900 ns |
+| exp-rs 0.2.0 | 2930 ns | 2800 ns | 2940 ns |
+
+Compiled once, then evaluated with new values of `x` and `y` at each call, by `nanoexpr::compile`, `fasteval`'s
+`Parser` and `compile`, and `exmex::parse`:
+
+| Crate | Arithmetic | Functions | Variables |
+|---|---|---|---|
+| **nanoexpr** | **6 ns** | **114 ns** | **38 ns** |
+| fasteval 0.2.4 | 4 ns | 4 ns | 49 ns |
+| exmex 0.21.0 | 10 ns | 10 ns | 37 ns |
+
+All three compute operations on constants once, at compilation. `fasteval` and `exmex` also compute calls of
+their built-in functions on constants, such as `sin(0.5)`, while `nanoexpr` asks the context for each call at each
+evaluation, so a context can change what a function does between evaluations. None of them allocates while
+evaluating a compiled expression.
 
 Heap use per evaluation, as allocations / bytes allocated / peak live bytes:
 
@@ -378,7 +418,7 @@ pulls in the standard library's panic and formatting code that every other modul
 | Crate | Size | Over baseline |
 |---|---|---|
 | Baseline | 15.1 KiB | |
-| **nanoexpr** | **75.3 KiB** | **60.2 KiB** |
+| **nanoexpr** | **79.8 KiB** | **64.6 KiB** |
 | meval 0.2.0 | 140.0 KiB | 124.8 KiB |
 | evalexpr 13.1.0 | 192.7 KiB | 177.5 KiB |
 | fasteval 0.2.4 | 128.1 KiB | 113.0 KiB |
@@ -387,10 +427,9 @@ pulls in the standard library's panic and formatting code that every other modul
 
 These modules use `std`, unlike the `no_std` builds in [Footprint](#footprint).
 
-Measured on an Apple M2 Pro with rustc 1.99.0, in October 2026. Every call parses the expression again: none is
-compiled once and reused. `fasteval`, `exmex` and `meval` can compile an expression once and then evaluate it much
-faster, so for a formula evaluated many times they can beat `nanoexpr`. Times vary by a few percent between runs. Heap
-use is counted by a global allocator wrapper; `exp-rs` installs its own global allocator, so its heap use cannot be
+Measured on an Apple M2 Pro with rustc 1.99.0, in October 2026, as the best of six runs of the benchmark, while
+other work kept the machine busy. In the first table every call parses the expression again. Times vary by a few
+percent between runs. Heap use is counted by a global allocator wrapper; `exp-rs` installs its own global allocator, so its heap use cannot be
 measured that way. To reproduce, from the
 [`comparison`](https://github.com/AlixANNERAUD/nanoexpr/tree/main/comparison) directory of the repository:
 
