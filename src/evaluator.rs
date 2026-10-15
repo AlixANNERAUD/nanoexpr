@@ -1,3 +1,8 @@
+//! Evaluates expressions in a single pass, by precedence climbing.
+//!
+//! The value of each operand is computed as soon as it is parsed, so nothing is kept but the current token and
+//! the values on the call stack.
+
 use core::marker::PhantomData;
 
 use crate::lexer::{Kind, Lexer, Token};
@@ -30,8 +35,11 @@ pub enum PercentSign {
 /// ```
 #[derive(Debug, Clone, Copy)]
 pub struct Evaluator<'c, C: ?Sized, const ARGUMENTS: usize = 8> {
+    /// Resolves variables and functions.
     context: &'c C,
+    /// Most levels of nesting before [`ErrorKind::TooDeep`].
     max_depth: usize,
+    /// How `%` is read.
     percent_sign: PercentSign,
 }
 
@@ -85,34 +93,54 @@ impl<'c, C: ?Sized, const ARGUMENTS: usize> Evaluator<'c, C, ARGUMENTS> {
     }
 }
 
+/// A binary operator, mapped to a [`Number`] operation.
 #[derive(Clone, Copy)]
 enum Operator {
+    /// `+`
     Add,
+    /// `-`
     Subtract,
+    /// `*`
     Multiply,
+    /// `/`
     Divide,
+    /// `%` or `mod`
     Remainder,
+    /// `^` or `**`
     Power,
 }
 
+/// Binding powers of `+` and `-`, on their left and right: the right one is higher, so they associate to the left.
 const ADDITIVE: (u8, u8) = (1, 2);
+/// Binding powers of `*`, `/`, `%` and `mod`, tighter than [`ADDITIVE`] and associating to the left.
 const MULTIPLICATIVE: (u8, u8) = (3, 4);
+/// Binding power of the operand of a unary `-` or `+`: looser than [`POWER`], so `-2^2` is `-(2^2)`.
 const UNARY: u8 = 5;
+/// Binding powers of `^`: the left one is higher, so it associates to the right and `2^3^2` is `2^(3^2)`.
 const POWER: (u8, u8) = (8, 7);
+/// Binding power of a postfix `%` percentage, the tightest of all.
 const PERCENTAGE: u8 = 9;
 
+/// The state of one evaluation.
 struct Parser<'i, 'e, 'c, N, C: ?Sized, const ARGUMENTS: usize> {
+    /// Source of the tokens after [`Parser::token`].
     lexer: Lexer<'i>,
+    /// The token being looked at, not consumed yet.
     token: Token<'i>,
+    /// Offset just past the last consumed token, where error spans end.
     end: usize,
+    /// How many [`Parser::expression`] calls are running.
     depth: usize,
+    /// Limits, syntax and context.
     evaluator: &'e Evaluator<'c, C, ARGUMENTS>,
+    /// The number type values are computed in.
     number: PhantomData<N>,
 }
 
 impl<'i, N: Number, C: Context<N> + ?Sized, const ARGUMENTS: usize>
     Parser<'i, '_, '_, N, C, ARGUMENTS>
 {
+    /// Consumes the current token, returns it and reads the next one.
     fn advance(&mut self) -> Result<Token<'i>, Error> {
         let token = self.token;
         self.end = token.span.end;
@@ -120,10 +148,12 @@ impl<'i, N: Number, C: Context<N> + ?Sized, const ARGUMENTS: usize>
         Ok(token)
     }
 
+    /// Creates an error of `kind` spanning from `start` to the end of the last consumed token.
     fn at(&self, start: usize, kind: ErrorKind) -> Error {
         Error::new(kind, Span::new(start, self.end))
     }
 
+    /// Returns the binary operator of the current token and its binding powers, if it is one.
     fn infix(&self) -> Option<(Operator, (u8, u8))> {
         match self.token.kind {
             Kind::Plus => Some((Operator::Add, ADDITIVE)),
@@ -139,6 +169,10 @@ impl<'i, N: Number, C: Context<N> + ?Sized, const ARGUMENTS: usize>
         }
     }
 
+    /// Evaluates operands joined by operators that bind at least as tightly as `minimum`.
+    ///
+    /// Starts with a [`Parser::prefix`] operand, then applies each following operator whose left binding power is
+    /// at least `minimum`, evaluating its right operand with the operator's right binding power.
     fn expression(&mut self, minimum: u8) -> Result<N, Error> {
         if self.depth == self.evaluator.max_depth {
             return Err(Error::new(ErrorKind::TooDeep, self.token.span));
@@ -180,6 +214,7 @@ impl<'i, N: Number, C: Context<N> + ?Sized, const ARGUMENTS: usize>
         Ok(left)
     }
 
+    /// Evaluates a single operand: a number, a variable, a call, a parenthesized expression or a unary operation.
     fn prefix(&mut self) -> Result<N, Error> {
         let token = self.advance()?;
         match token.kind {
@@ -207,6 +242,7 @@ impl<'i, N: Number, C: Context<N> + ?Sized, const ARGUMENTS: usize>
         }
     }
 
+    /// Consumes the `)` matching `opening`.
     fn close(&mut self, opening: Token<'i>) -> Result<(), Error> {
         match self.token.kind {
             Kind::RightParenthesis => self.advance().map(drop),
@@ -215,6 +251,9 @@ impl<'i, N: Number, C: Context<N> + ?Sized, const ARGUMENTS: usize>
         }
     }
 
+    /// Evaluates the arguments of a call to `name` and asks the context to call it.
+    ///
+    /// Kept out of line so that the arguments array only takes stack space in calls, not in every operand.
     #[inline(never)]
     fn call(&mut self, name: &str, name_token: Token<'i>) -> Result<N, Error> {
         let opening = self.advance()?;
