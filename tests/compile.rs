@@ -242,6 +242,20 @@ fn compiled_decimals_match_evaluation() {
     });
 }
 
+#[cfg(feature = "fraction")]
+#[test]
+fn compiled_fractions_match_evaluation() {
+    use nanoexpr::Fraction;
+    let number = |text: &str| text.parse::<Fraction>().unwrap();
+    let variables = [
+        ("x", number("3")),
+        ("y", number("0")),
+        ("z", number("-5/2")),
+        ("big", number("18446744073709551615")),
+    ];
+    differential::<Fraction, 8>(variables, 0x0f1e_2d3c_4b5a_6978, Fraction::eq);
+}
+
 #[test]
 fn programs_are_reusable() {
     let mut code = [Instruction::default(); 16];

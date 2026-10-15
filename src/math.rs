@@ -2,10 +2,12 @@
 
 #[cfg(feature = "decimal")]
 use crate::Decimal;
+#[cfg(feature = "fraction")]
+use crate::Fraction;
 use crate::{Context, Error, ErrorKind, Evaluator, Number};
 
-/// The usual constants and functions of a scientific calculator, for `f32` and `f64` with the `libm` feature, and
-/// for `Decimal` with the `decimal` feature.
+/// The usual constants and functions of a scientific calculator, for `f32` and `f64` with the `libm` feature, for
+/// `Decimal` with the `decimal` feature, and the exact ones for `Fraction` with the `fraction` feature.
 ///
 /// | Name | Meaning |
 /// |---|---|
@@ -27,6 +29,11 @@ use crate::{Context, Error, ErrorKind, Evaluator, Number};
 /// in rare cases, which are one unit in the last place away. Results beyond its exponent range are
 /// [`ErrorKind::Overflow`] errors and results too small for it become zero. Trigonometric functions of `Decimal`
 /// arguments of `10^343` and beyond are [`ErrorKind::Domain`] errors.
+///
+/// `Fraction` never approximates: it has no constants, and only the functions whose results are exact fractions.
+/// `abs`, `sign`, rounding, `min`, `max` and `clamp` always are, and `sqrt`, `cbrt`, `hypot` and `pow` are when
+/// their result is rational, such as `sqrt(4/9) = 2/3`. Other results, and every other function, are
+/// [`ErrorKind::Inexact`] errors.
 ///
 /// Combine it with your own context to add variables or functions, yours taking precedence:
 ///
@@ -239,6 +246,62 @@ impl<const DIGITS: u32, const MAX_EXPONENT: i32> Context<Decimal<DIGITS, MAX_EXP
             ("max", &[first, ref rest @ ..]) => Ok(rest.iter().fold(first, |a, b| a.max(*b))),
             ("clamp", &[x, low, high]) if low <= high => Ok(x.clamp(low, high)),
             ("clamp", &[_, _, _]) => Err(ErrorKind::Domain),
+            _ if FUNCTIONS.contains(&name) => Err(ErrorKind::ArgumentCount),
+            _ => return None,
+        };
+        Some(result)
+    }
+}
+
+/// The functions of [`Math`] whose results are irrational for most arguments, which a [`Fraction`] does not compute,
+/// with the number of arguments they take.
+#[cfg(feature = "fraction")]
+const INEXACT: [(&str, usize); 21] = [
+    ("exp", 1),
+    ("ln", 1),
+    ("log2", 1),
+    ("log10", 1),
+    ("log", 1),
+    ("log", 2),
+    ("sin", 1),
+    ("cos", 1),
+    ("tan", 1),
+    ("asin", 1),
+    ("acos", 1),
+    ("atan", 1),
+    ("atan2", 2),
+    ("sinh", 1),
+    ("cosh", 1),
+    ("tanh", 1),
+    ("asinh", 1),
+    ("acosh", 1),
+    ("atanh", 1),
+    ("sqrt", 1),
+    ("cbrt", 1),
+];
+
+#[cfg(feature = "fraction")]
+impl Context<Fraction> for Math {
+    fn call(&self, name: &str, arguments: &[Fraction]) -> Option<Result<Fraction, ErrorKind>> {
+        let result = match (name, arguments) {
+            ("abs", &[x]) => Ok(x.abs()),
+            ("sign", &[x]) => Ok(x.sign()),
+            ("floor", &[x]) => Ok(x.floor()),
+            ("ceil", &[x]) => Ok(x.ceil()),
+            ("round", &[x]) => Ok(x.round()),
+            ("trunc", &[x]) => Ok(x.trunc()),
+            ("pow", &[x, y]) => x.power(y),
+            ("sqrt", &[x]) => x.root(2),
+            ("cbrt", &[x]) => x.root(3),
+            ("hypot", &[x, y]) => x
+                .multiply(x)
+                .and_then(|square| square.add(y.multiply(y)?))
+                .and_then(|sum| sum.root(2)),
+            ("min", &[first, ref rest @ ..]) => Ok(rest.iter().fold(first, |a, b| a.min(*b))),
+            ("max", &[first, ref rest @ ..]) => Ok(rest.iter().fold(first, |a, b| a.max(*b))),
+            ("clamp", &[x, low, high]) if low <= high => Ok(x.clamp(low, high)),
+            ("clamp", &[_, _, _]) => Err(ErrorKind::Domain),
+            _ if INEXACT.contains(&(name, arguments.len())) => Err(ErrorKind::Inexact),
             _ if FUNCTIONS.contains(&name) => Err(ErrorKind::ArgumentCount),
             _ => return None,
         };

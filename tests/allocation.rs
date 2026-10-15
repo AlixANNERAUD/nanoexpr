@@ -77,6 +77,22 @@ fn evaluation_never_allocates() {
         }),
         0
     );
+    #[cfg(feature = "fraction")]
+    assert_eq!(
+        allocations(|| {
+            let value: nanoexpr::Fraction = nanoexpr::evaluate(
+                "(1/3 + 1/6) * 0.75 - sqrt(4/9) ^ 3 % 1/7 + max(round(7/2), floor(-1/3))",
+            )
+            .unwrap();
+            let error = nanoexpr::evaluate::<nanoexpr::Fraction>("sqrt(2) + 1").unwrap_err();
+            let parsed: nanoexpr::Fraction = "-5/4".parse().unwrap();
+            let mut text = [0_u8; 64];
+            let mut cursor = std::io::Cursor::new(&mut text[..]);
+            std::io::Write::write_fmt(&mut cursor, format_args!("{value} {parsed:#} {error}"))
+                .unwrap();
+        }),
+        0
+    );
     #[cfg(feature = "libm")]
     assert_eq!(
         allocations(|| nanoexpr::evaluate::<f64>(

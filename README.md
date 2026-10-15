@@ -22,7 +22,7 @@ assert_eq!(nanoexpr::evaluate::<f64>("2 * (3 + 4) ^ 2 / sqrt(16)"), Ok(24.5));
 | Speed | about **290 ns** to parse and evaluate a formula, at least 1.4 times faster than the other crates, or **40 ns** compiled once [measured](#performance) |
 | Size | **6 KiB** of WebAssembly for integers, 46 KiB with `f64` and every math function |
 | Targets | Any `no_std` target: Cortex-M, RISC-V (ESP32-C3), WebAssembly, desktops. Built in CI for each |
-| Numbers | `f32`, `f64`, integers, calculator-exact `Decimal`, or your own type |
+| Numbers | `f32`, `f64`, integers, calculator-exact `Decimal`, exact `Fraction`, or your own type |
 | Languages | Rust, and C or C++ through a CMake project |
 | Dependencies | None, except the optional pure Rust `libm` |
 
@@ -52,6 +52,8 @@ Use it for:
 - **Calculator-exact decimals.** The optional `Decimal` type computes in decimal like TI and Casio calculators:
   14 significant digits and exponents up to ±99 by default, so `0.1 + 0.2` is exactly `0.3`, and turns results
   into fractions like the `►Frac` key: `1/3 + 1/6` is `1/2`.
+- **Exact fractions.** The optional `Fraction` type computes with rational numbers exactly, so `1/3 + 1/6` is
+  exactly `1/2`, and reports results it cannot represent instead of rounding them.
 - **Variables and functions from your code.** The evaluator asks a `Context` for each name it meets: implement the
   trait, pass `(name, value)` pairs, or wrap closures. Contexts compose as tuples.
 - **Scientific functions included.** `Math` provides `pi`, `e`, `sqrt`, `sin`, `cos`, `tan`, `exp`, `ln`, `log`,
@@ -250,6 +252,43 @@ up to ±9999, including arguments next to multiples of π, next to 1 and next to
 rounded. Correct rounding is not guaranteed: in rare cases a result can be one unit in the last place away.
 Trigonometric functions of arguments of `10^343` and beyond, where the digits of π kept run out, are `Domain`
 errors.
+
+### Exact fractions
+
+With the `fraction` feature, `Fraction` computes with rational numbers exactly: `1/3 + 1/6` is `1/2`, not
+`0.49999999999999`. Every value is kept in lowest terms, with a numerator and a denominator of up to 64 bits, and a
+result that does not fit is an `Overflow` error rather than a rounded value. Decimal literals are exact too, so
+`0.1 + 0.2` is `3/10`.
+
+```toml
+[dependencies]
+nanoexpr = { version = "0.1", features = ["fraction"] }
+```
+
+```rust
+# #[cfg(feature = "fraction")] {
+use nanoexpr::{ErrorKind, Fraction};
+
+let sum: Fraction = nanoexpr::evaluate("1/3 + 1/6").unwrap();
+assert_eq!(sum.to_string(), "1/2");
+
+let mixed: Fraction = nanoexpr::evaluate("0.75 + 5/2").unwrap();
+assert_eq!(mixed.to_string(), "13/4");
+assert_eq!(format!("{mixed:#}"), "3 1/4");
+
+let root: Fraction = nanoexpr::evaluate("sqrt(4/9) + 8 ^ (1/3)").unwrap();
+assert_eq!(root.to_string(), "8/3");
+
+let irrational = nanoexpr::evaluate::<Fraction>("sqrt(2)").unwrap_err();
+assert_eq!(irrational.kind, ErrorKind::Inexact);
+# }
+```
+
+`Math` gives `Fraction` only the functions whose results are exact: `abs`, `sign`, rounding, `min`, `max`, `clamp`,
+and `sqrt`, `cbrt`, `hypot` and `pow` when the result is rational. Other functions, `2 ^ (1/2)` and constants such
+as `pi` are errors, as `Fraction` never approximates. `Fraction` parses from text such as `-5/4`, converts to `f64`,
+and with the `decimal` feature to and from `Decimal`. Checks against Python's `fractions` module on 4,000 random
+expressions show the results, overflows included, match.
 
 ## C and C++
 
@@ -464,7 +503,8 @@ cargo run --release --features exp-rs --bin bench
 | Feature | Default | Effect |
 |---|---|---|
 | `libm` | ✅ | `Number` for `f32` and `f64`, `Math` and `evaluate`, through the pure Rust [`libm`](https://crates.io/crates/libm) |
-| `decimal` | | The `Decimal` type, and `Math` and `evaluate` for it, without `libm` |
+| `decimal` | | The `Decimal` type, and `Math` and `evaluate` for it, without `libm`. Enables `fraction` |
+| `fraction` | | The exact `Fraction` type, and `Math` and `evaluate` for it, without `libm` |
 
 ## Frequently asked questions
 
