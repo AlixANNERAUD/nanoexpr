@@ -6,6 +6,9 @@ use core::str::FromStr;
 
 use crate::{ErrorKind, Number};
 
+mod functions;
+mod wide;
+
 /// A decimal floating-point number, as pocket calculators compute with.
 ///
 /// The value is a coefficient of `DIGITS` significant decimal digits times a power of ten, with a scientific exponent
@@ -321,36 +324,6 @@ impl<const DIGITS: u32, const MAX_EXPONENT: i32> Decimal<DIGITS, MAX_EXPONENT> {
         }
     }
 
-    /// Returns `self` raised to the integer power `exponent`, by squaring.
-    fn integer_power(self, exponent: i64) -> Result<Self, ErrorKind> {
-        let mut result = Self::one();
-        let mut base = self;
-        let mut remaining = exponent.unsigned_abs();
-        let magnitude = loop {
-            if remaining & 1 == 1 {
-                result = match result.multiply(base) {
-                    Ok(value) => value,
-                    Err(ErrorKind::Overflow) if exponent < 0 => return Ok(Self::ZERO),
-                    Err(kind) => return Err(kind),
-                };
-            }
-            remaining >>= 1;
-            if remaining == 0 {
-                break result;
-            }
-            base = match base.multiply(base) {
-                Ok(value) => value,
-                Err(ErrorKind::Overflow) if exponent < 0 => return Ok(Self::ZERO),
-                Err(kind) => return Err(kind),
-            };
-        };
-        if exponent < 0 {
-            Self::one().divide(magnitude)
-        } else {
-            Ok(magnitude)
-        }
-    }
-
     /// Returns whether the number is an integer.
     fn is_integer(self) -> bool {
         self.exponent >= 0
@@ -481,24 +454,7 @@ impl<const DIGITS: u32, const MAX_EXPONENT: i32> Number for Decimal<DIGITS, MAX_
     }
 
     fn power(self, rhs: Self) -> Result<Self, ErrorKind> {
-        if let Some(exponent) = rhs.to_integer() {
-            return self.integer_power(exponent);
-        }
-        if self.negative && !rhs.is_integer() {
-            return Err(ErrorKind::Domain);
-        }
-        if self.is_zero() {
-            return if rhs.negative {
-                Err(ErrorKind::DivisionByZero)
-            } else {
-                Ok(Self::ZERO)
-            };
-        }
-        let power = libm::pow(self.abs().to_f64(), rhs.to_f64());
-        if power == 0.0 {
-            return Ok(Self::ZERO);
-        }
-        Self::from_f64(power)
+        self.pow(rhs)
     }
 
     fn negate(self) -> Result<Self, ErrorKind> {

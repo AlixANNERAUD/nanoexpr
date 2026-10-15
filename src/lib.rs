@@ -9,7 +9,7 @@ mod decimal;
 mod error;
 mod evaluator;
 mod lexer;
-#[cfg(feature = "libm")]
+#[cfg(any(feature = "libm", feature = "decimal"))]
 mod math;
 mod number;
 
@@ -18,6 +18,6 @@ pub use context::{Context, Functions, Variables};
 pub use decimal::{Decimal, ParseDecimalError};
 pub use error::{Error, ErrorKind, Span};
 pub use evaluator::{Evaluator, PercentSign, evaluate_with};
-#[cfg(feature = "libm")]
+#[cfg(any(feature = "libm", feature = "decimal"))]
 pub use math::{Math, evaluate};
 pub use number::Number;

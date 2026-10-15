@@ -4,7 +4,8 @@
 use crate::Decimal;
 use crate::{Context, Error, ErrorKind, Evaluator, Number};
 
-/// The usual constants and functions of a scientific calculator, for `f32` and `f64`.
+/// The usual constants and functions of a scientific calculator, for `f32` and `f64` with the `libm` feature, and
+/// for `Decimal` with the `decimal` feature.
 ///
 /// | Name | Meaning |
 /// |---|---|
@@ -21,18 +22,43 @@ use crate::{Context, Error, ErrorKind, Evaluator, Number};
 /// Operands outside a function's domain, such as `sqrt(-1)` or `ln(0)`, give [`ErrorKind::Domain`], and finite
 /// operands whose result is infinite give [`ErrorKind::Overflow`].
 ///
+/// `f32` and `f64` call the functions of [`libm`](https://crates.io/crates/libm). `Decimal` computes every function
+/// in decimal with 36 significant digits, then rounds once to its own digits: results are correctly rounded except
+/// in rare cases, which are one unit in the last place away. Results beyond its exponent range are
+/// [`ErrorKind::Overflow`] errors and results too small for it become zero. Trigonometric functions of `Decimal`
+/// arguments of `10^343` and beyond are [`ErrorKind::Domain`] errors.
+///
 /// Combine it with your own context to add variables or functions, yours taking precedence:
 ///
 /// ```
+/// # #[cfg(feature = "libm")] {
 /// use nanoexpr::Math;
 ///
 /// let context = ([("r", 2.0)], Math);
 /// assert_eq!(nanoexpr::evaluate_with("pi * r ^ 2", &context), Ok(core::f64::consts::PI * 4.0));
+/// # }
+/// ```
+///
+/// ```
+/// # #[cfg(feature = "decimal")] {
+/// use nanoexpr::Decimal;
+///
+/// let sine: Decimal = nanoexpr::evaluate("sin(pi)").unwrap();
+/// assert_eq!(sine.to_string(), "-6.7615373566167e-15");
+/// # }
 /// ```
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
 pub struct Math;
 
+/// The names of the functions of [`Math`], which take a wrong number of arguments when no other arm matches.
+const FUNCTIONS: [&str; 31] = [
+    "sqrt", "cbrt", "abs", "sign", "exp", "ln", "log2", "log10", "log", "sin", "cos", "tan",
+    "asin", "acos", "atan", "atan2", "sinh", "cosh", "tanh", "asinh", "acosh", "atanh", "floor",
+    "ceil", "round", "trunc", "pow", "hypot", "min", "max", "clamp",
+];
+
 /// Returns whether `value` is neither `NaN` nor infinite.
+#[cfg(feature = "libm")]
 fn finite<T: Into<f64>>(value: T) -> bool {
     value.into().is_finite()
 }
@@ -41,6 +67,7 @@ fn finite<T: Into<f64>>(value: T) -> bool {
 ///
 /// `$module` gathers wrappers named after the functions they implement, which call the `libm` function of the
 /// right precision: `unary` ones take one argument and `binary` ones two.
+#[cfg(feature = "libm")]
 macro_rules! math {
     (
         $type:ident in $module:ident,
@@ -107,12 +134,7 @@ macro_rules! math {
                     ("min", &[first, ref rest @ ..]) => Ok(rest.iter().fold(first, |a, b| a.min(*b))),
                     ("max", &[first, ref rest @ ..]) => Ok(rest.iter().fold(first, |a, b| a.max(*b))),
                     ("clamp", &[x, low, high]) => domain(low <= high, x.max(low).min(high)),
-                    (
-                        "sqrt" | "cbrt" | "abs" | "sign" | "exp" | "ln" | "log2" | "log10" | "log" | "sin" | "cos"
-                        | "tan" | "asin" | "acos" | "atan" | "atan2" | "sinh" | "cosh" | "tanh" | "asinh" | "acosh"
-                        | "atanh" | "floor" | "ceil" | "round" | "trunc" | "pow" | "hypot" | "min" | "max" | "clamp",
-                        _,
-                    ) => Err(ErrorKind::ArgumentCount),
+                    _ if FUNCTIONS.contains(&name) => Err(ErrorKind::ArgumentCount),
                     _ => return None,
                 };
                 Some(result.and_then(|value| {
@@ -127,6 +149,7 @@ macro_rules! math {
     };
 }
 
+#[cfg(feature = "libm")]
 math!(
     f32 in single,
     unary: [
@@ -138,6 +161,7 @@ math!(
     binary: [atan2 = atan2f, hypot = hypotf],
 );
 
+#[cfg(feature = "libm")]
 math!(
     f64 in double,
     unary: [
@@ -152,8 +176,10 @@ math!(
 /// Evaluates `input` with the constants and functions of [`Math`].
 ///
 /// ```
+/// # #[cfg(feature = "libm")] {
 /// assert_eq!(nanoexpr::evaluate::<f64>("sqrt(16) + 2 ^ 3"), Ok(12.0));
 /// assert_eq!(nanoexpr::evaluate::<f32>("max(1, cos(0), 0.5)"), Ok(1.0));
+/// # }
 /// ```
 pub fn evaluate<N: Number>(input: &str) -> Result<N, Error>
 where
@@ -188,18 +214,33 @@ impl<const DIGITS: u32, const MAX_EXPONENT: i32> Context<Decimal<DIGITS, MAX_EXP
             ("round", &[x]) => x.round(),
             ("trunc", &[x]) => x.trunc(),
             ("pow", &[x, y]) => x.power(y),
+            ("sqrt", &[x]) => x.sqrt(),
+            ("cbrt", &[x]) => x.cbrt(),
+            ("exp", &[x]) => x.exp(),
+            ("ln", &[x]) => x.ln(),
+            ("log2", &[x]) => x.log2(),
+            ("log10" | "log", &[x]) => x.log10(),
+            ("log", &[x, base]) => x.log(base),
+            ("sin", &[x]) => x.sin(),
+            ("cos", &[x]) => x.cos(),
+            ("tan", &[x]) => x.tan(),
+            ("asin", &[x]) => x.asin(),
+            ("acos", &[x]) => x.acos(),
+            ("atan", &[x]) => x.atan(),
+            ("atan2", &[y, x]) => y.atan2(x),
+            ("sinh", &[x]) => x.sinh(),
+            ("cosh", &[x]) => x.cosh(),
+            ("tanh", &[x]) => x.tanh(),
+            ("asinh", &[x]) => x.asinh(),
+            ("acosh", &[x]) => x.acosh(),
+            ("atanh", &[x]) => x.atanh(),
+            ("hypot", &[x, y]) => x.hypot(y),
             ("min", &[first, ref rest @ ..]) => Ok(rest.iter().fold(first, |a, b| a.min(*b))),
             ("max", &[first, ref rest @ ..]) => Ok(rest.iter().fold(first, |a, b| a.max(*b))),
             ("clamp", &[x, low, high]) if low <= high => Ok(x.clamp(low, high)),
             ("clamp", &[_, _, _]) => Err(ErrorKind::Domain),
-            _ => {
-                let mut values = [0.0; 4];
-                for (value, argument) in values.iter_mut().zip(arguments) {
-                    *value = argument.to_f64();
-                }
-                let values = &values[..arguments.len().min(values.len())];
-                Context::<f64>::call(self, name, values)?.and_then(Decimal::from_f64)
-            }
+            _ if FUNCTIONS.contains(&name) => Err(ErrorKind::ArgumentCount),
+            _ => return None,
         };
         Some(result)
     }
