@@ -104,6 +104,11 @@ impl<'c, C: ?Sized, const ARGUMENTS: usize> Evaluator<'c, C, ARGUMENTS> {
         self
     }
 
+    /// Returns the limits and syntax settings.
+    pub(crate) const fn syntax(&self) -> Syntax {
+        self.syntax
+    }
+
     /// Evaluates `input`.
     pub fn evaluate<N: Number>(&self, input: &str) -> Result<N, Error>
     where

@@ -56,6 +56,11 @@ pub enum ErrorKind {
     /// [`Number`]: crate::Number
     /// [`Number::compare`]: crate::Number::compare
     Unsupported,
+    /// An expression that needs more instructions, or more pending values, than the buffer or the stack of its
+    /// compiled [`Program`] can hold.
+    ///
+    /// [`Program`]: crate::Program
+    TooLong,
 }
 
 impl ErrorKind {
@@ -76,6 +81,7 @@ impl ErrorKind {
             Self::Overflow => "overflow",
             Self::TooDeep => "expression nested too deeply",
             Self::Unsupported => "unsupported operation",
+            Self::TooLong => "expression too long",
         }
     }
 }
