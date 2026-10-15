@@ -1,13 +1,19 @@
 //! The [`Math`] context of constants and scientific functions, and [`evaluate`] that uses it.
 
+#[cfg(feature = "exact")]
+use core::cmp::Ordering;
+
 #[cfg(feature = "decimal")]
 use crate::Decimal;
+#[cfg(feature = "exact")]
+use crate::Exact;
 #[cfg(feature = "fraction")]
 use crate::Fraction;
 use crate::{Context, Error, ErrorKind, Evaluator, Number};
 
 /// The usual constants and functions of a scientific calculator, for `f32` and `f64` with the `libm` feature, for
-/// `Decimal` with the `decimal` feature, and the exact ones for `Fraction` with the `fraction` feature.
+/// `Decimal` with the `decimal` feature, the exact ones for `Fraction` with the `fraction` feature, and both for
+/// `Exact` with the `exact` feature.
 ///
 /// | Name | Meaning |
 /// |---|---|
@@ -34,6 +40,10 @@ use crate::{Context, Error, ErrorKind, Evaluator, Number};
 /// `abs`, `sign`, rounding, `min`, `max` and `clamp` always are, and `sqrt`, `cbrt`, `hypot` and `pow` are when
 /// their result is rational, such as `sqrt(4/9) = 2/3`. Other results, and every other function, are
 /// [`ErrorKind::Inexact`] errors.
+///
+/// `Exact` computes a function exactly when its arguments are fractions and its result is exact, and with the
+/// `Decimal` function otherwise. Its constants are decimals, and `min`, `max` and `clamp` return one of their
+/// arguments as it is, comparing values exactly.
 ///
 /// Combine it with your own context to add variables or functions, yours taking precedence:
 ///
@@ -306,5 +316,70 @@ impl Context<Fraction> for Math {
             _ => return None,
         };
         Some(result)
+    }
+}
+
+#[cfg(feature = "exact")]
+impl<const DIGITS: u32, const MAX_EXPONENT: i32> Context<Exact<DIGITS, MAX_EXPONENT>> for Math {
+    fn variable(&self, name: &str) -> Option<Exact<DIGITS, MAX_EXPONENT>> {
+        Context::<Decimal<DIGITS, MAX_EXPONENT>>::variable(self, name).map(Exact::from)
+    }
+
+    fn call(
+        &self,
+        name: &str,
+        arguments: &[Exact<DIGITS, MAX_EXPONENT>],
+    ) -> Option<Result<Exact<DIGITS, MAX_EXPONENT>, ErrorKind>> {
+        let pick = |first, rest: &[Exact<DIGITS, MAX_EXPONENT>], keep: Ordering| {
+            rest.iter().fold(first, |chosen, candidate| {
+                if candidate.cmp_value(chosen) == keep {
+                    *candidate
+                } else {
+                    chosen
+                }
+            })
+        };
+        match (name, arguments) {
+            ("min", &[first, ref rest @ ..]) => return Some(Ok(pick(first, rest, Ordering::Less))),
+            ("max", &[first, ref rest @ ..]) => {
+                return Some(Ok(pick(first, rest, Ordering::Greater)));
+            }
+            ("clamp", &[x, low, high]) => {
+                return Some(
+                    match (low.cmp_value(high), x.cmp_value(low), x.cmp_value(high)) {
+                        (Ordering::Greater, _, _) => Err(ErrorKind::Domain),
+                        (_, Ordering::Less, _) => Ok(low),
+                        (_, _, Ordering::Greater) => Ok(high),
+                        _ => Ok(x),
+                    },
+                );
+            }
+            _ => {}
+        }
+        if arguments.len() > 3 {
+            return FUNCTIONS
+                .contains(&name)
+                .then_some(Err(ErrorKind::ArgumentCount));
+        }
+        let mut fractions = [Fraction::ZERO; 3];
+        let mut exact = true;
+        for (slot, argument) in fractions.iter_mut().zip(arguments) {
+            match argument.as_fraction() {
+                Some(fraction) => *slot = fraction,
+                None => exact = false,
+            }
+        }
+        if exact {
+            match Context::<Fraction>::call(self, name, &fractions[..arguments.len()]) {
+                Some(Err(ErrorKind::Overflow | ErrorKind::Inexact)) | None => {}
+                result => return result.map(|result| result.map(Exact::from)),
+            }
+        }
+        let mut decimals = [Decimal::ZERO; 3];
+        for (slot, argument) in decimals.iter_mut().zip(arguments) {
+            *slot = argument.to_decimal();
+        }
+        Context::<Decimal<DIGITS, MAX_EXPONENT>>::call(self, name, &decimals[..arguments.len()])
+            .map(|result| result.map(Exact::from))
     }
 }
