@@ -60,11 +60,11 @@ pub trait Number: Copy + Default {
     /// Returns the factorial `self!`, the product `1 * 2 * ... * self`, with `0! = 1`.
     ///
     /// Return [`ErrorKind::Domain`] when `self` is negative or not an integer, and [`ErrorKind::Overflow`] when
-    /// the result does not fit. The default counts from zero to `self` with [`Number::add`], [`Number::compare`]
-    /// and [`Number::from_bool`], multiplying as it goes, so it needs [`Number::compare`] and rounds each product
-    /// as [`Number::multiply`] does. It gives up with [`ErrorKind::Overflow`] after 10 000 multiplications, so a
-    /// type with a huge or unbounded range cannot compute for ever. Override it to round only once, as `Decimal`
-    /// does.
+    /// the result does not fit. The default checks that `self` is a non-negative integer with [`Number::compare`]
+    /// and a [`Number::remainder`] by one, then counts from zero to `self` with [`Number::add`], multiplying as it
+    /// goes, so it needs [`Number::compare`] and rounds each product as [`Number::multiply`] does. It gives up
+    /// with [`ErrorKind::Overflow`] after 10 000 multiplications, so a type with a huge or unbounded range cannot
+    /// compute for ever. Override it to round only once, as `Decimal` does.
     fn factorial(self) -> Result<Self, ErrorKind> {
         factorial(self)
     }
@@ -78,15 +78,19 @@ pub(crate) const MAX_FACTORIAL: usize = 10_000;
 
 /// Returns `n!`, the product `1 * 2 * ... * n`, with `0! = 1`.
 ///
-/// Counts from zero to `n` with [`Number::add`] and [`Number::compare`], multiplying as it goes, so the results of
-/// integer types and `Fraction` are exact, and `Decimal` and floats round each product as their multiplication
-/// does. Fails with [`ErrorKind::Domain`] when `n` is negative or not an integer, and with [`ErrorKind::Overflow`]
-/// when a product does not fit or `n` is above [`MAX_FACTORIAL`].
+/// Checks that `n` is a non-negative integer with [`Number::compare`] and [`Number::remainder`] by one, then counts
+/// from zero to `n` with [`Number::add`], multiplying as it goes, so the results of integer types and `Fraction`
+/// are exact, and floats round each product as their multiplication does. Fails with [`ErrorKind::Domain`] when
+/// `n` is negative or not an integer, and with [`ErrorKind::Overflow`] when a product does not fit or `n` is
+/// above [`MAX_FACTORIAL`].
 fn factorial<N: Number>(n: N) -> Result<N, ErrorKind> {
     let one = N::from_bool(true)?;
     let mut count = N::from_bool(false)?;
-    let mut product = one;
     let mut ordering = count.compare(n)?;
+    if ordering == Ordering::Greater || !n.remainder(one)?.is_zero()? {
+        return Err(ErrorKind::Domain);
+    }
+    let mut product = one;
     let mut steps = 0;
     while ordering == Ordering::Less {
         if steps == MAX_FACTORIAL {

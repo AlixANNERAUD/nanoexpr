@@ -57,7 +57,8 @@ fn floats() {
     assert_eq!(evaluate::<f64>("fact(170.5)"), Err(ErrorKind::Domain));
     assert_eq!(evaluate::<f64>("fact(-0)"), Ok(1.0));
     assert_eq!(f64::NAN.factorial(), Err(ErrorKind::Domain));
-    assert_eq!(f64::INFINITY.factorial(), Err(ErrorKind::Overflow));
+    assert_eq!(f64::INFINITY.factorial(), Err(ErrorKind::Domain));
+    assert_eq!(evaluate::<f64>("fact(200.5)"), Err(ErrorKind::Domain));
     assert_eq!(f64::NEG_INFINITY.factorial(), Err(ErrorKind::Domain));
     assert_eq!(evaluate::<f64>("fact()"), Err(ErrorKind::ArgumentCount));
     assert_eq!(evaluate::<f64>("fact(1, 2)"), Err(ErrorKind::ArgumentCount));
@@ -109,6 +110,7 @@ fn fractions() {
     assert_eq!(evaluate::<Fraction>("fact(-1)"), Err(ErrorKind::Domain));
     assert_eq!(evaluate::<Fraction>("fact(1/2)"), Err(ErrorKind::Domain));
     assert_eq!(evaluate::<Fraction>("fact(7/2)"), Err(ErrorKind::Domain));
+    assert_eq!(evaluate::<Fraction>("fact(55/2)"), Err(ErrorKind::Domain));
 }
 
 #[cfg(feature = "exact")]
