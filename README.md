@@ -169,6 +169,67 @@ compiles expressions first, such as `fasteval` or `exmex`, will be faster.
 [exp-rs]: https://crates.io/crates/exp-rs
 [maschen]: https://crates.io/crates/maschen
 
+## Performance
+
+Each crate parses and evaluates three expressions from a string, once per call:
+
+| Expression | Input |
+|---|---|
+| Arithmetic | `((5.0 / 8.0) + 18.0 ^ 0.5 * 10.0 ^ 5.0) / 23.0` |
+| Functions | `sin(0.5) * cos(0.5) + sin(1.5) / cos(1.5)` (`math::sin` and `math::cos` for `evalexpr`) |
+| Variables | `x * x + 2.0 * x * y + y ^ 2.0` with `x = 1.5` and `y = 2.5` |
+
+Median time per evaluation:
+
+| Crate | Arithmetic | Functions | Variables |
+|---|---|---|---|
+| **nanoexpr** | **270 ns** | **270 ns** | **140 ns** |
+| meval 0.2.0 | 1340 ns | 1330 ns | 710 ns |
+| evalexpr 13.1.0 | 2370 ns | 3310 ns | 2090 ns |
+| fasteval 0.2.4 | 430 ns | 650 ns | 350 ns |
+| exmex 0.21.0 | 3460 ns | 3570 ns | 6330 ns |
+| exp-rs 0.2.0 | 3080 ns | 2940 ns | 3070 ns |
+
+Heap use per evaluation, as allocations / bytes allocated / peak live bytes:
+
+| Crate | Arithmetic | Functions | Variables |
+|---|---|---|---|
+| **nanoexpr** | **0 / 0 B / 0 B** | **0 / 0 B / 0 B** | **0 / 0 B / 0 B** |
+| meval 0.2.0 | 36 / 6106 B / 3296 B | 43 / 4594 B / 2424 B | 18 / 2404 B / 1794 B |
+| evalexpr 13.1.0 | 80 / 7440 B / 3264 B | 136 / 8826 B / 4008 B | 76 / 5416 B / 2146 B |
+| fasteval 0.2.4 | 12 / 9166 B / 9166 B | 22 / 10191 B / 10027 B | 11 / 8259 B / 8259 B |
+| exmex 0.21.0 | 2 / 2606 B / 2606 B | 2 / 2601 B / 2601 B | 4 / 2591 B / 2591 B |
+| exp-rs 0.2.0 | Not measured | Not measured | Not measured |
+
+Size of a WebAssembly module exporting one function that evaluates a string with each crate, built with
+`opt-level = "z"`, LTO, `panic = "abort"` and symbols stripped. The baseline module only unwraps an `Option`, which
+pulls in the standard library's panic and formatting code that every other module also contains:
+
+| Crate | Size | Over baseline |
+|---|---|---|
+| Baseline | 15.1 KiB | |
+| **nanoexpr** | **75.3 KiB** | **60.2 KiB** |
+| meval 0.2.0 | 140.0 KiB | 124.8 KiB |
+| evalexpr 13.1.0 | 192.7 KiB | 177.5 KiB |
+| fasteval 0.2.4 | 128.1 KiB | 113.0 KiB |
+| exmex 0.21.0 | 1015.2 KiB | 1000.1 KiB |
+| exp-rs 0.2.0 | 172.5 KiB | 157.3 KiB |
+
+These modules use `std`, unlike the `no_std` builds in [Footprint](#footprint).
+
+Measured on an Apple M2 Pro with rustc 1.99.0, in October 2026. Every call parses the expression again: none is
+compiled once and reused. `fasteval`, `exmex` and `meval` can compile an expression once and then evaluate it much
+faster, so for a formula evaluated many times they can beat `nanoexpr`. Times vary by a few percent between runs. Heap
+use is counted by a global allocator wrapper; `exp-rs` installs its own global allocator, so its heap use cannot be
+measured that way. To reproduce, from the
+[`comparison`](https://github.com/AlixANNERAUD/nanoexpr/tree/main/comparison) directory of the repository:
+
+```sh
+cargo run --release --features all --bin bench
+cargo run --release --features exp-rs --bin bench
+./size.sh
+```
+
 ## Feature flags
 
 | Feature | Default | Effect |
