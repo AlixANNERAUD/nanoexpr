@@ -17,6 +17,7 @@ include = ["/src", "/tests", "/README.md", "/LICENSE", "/CHANGELOG.md"]
 [features]
 default = ["libm"]
 libm = ["dep:libm"]
+decimal = ["libm"]
 
 [dependencies]
 libm = { version = "0.2", optional = true }
