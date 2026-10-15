@@ -47,6 +47,9 @@ jobs:
       - name: Test
         run: cargo test --workspace
 
+      - name: Test all features
+        run: cargo test --all-features
+
       - name: Test without libm
         run: cargo test --no-default-features --lib --tests
 
@@ -73,6 +76,9 @@ jobs:
 
       - name: Build
         run: cargo build --target ${{ matrix.target }}
+
+      - name: Build with decimals
+        run: cargo build --target ${{ matrix.target }} --features decimal
 
       - name: Build without libm
         run: cargo build --target ${{ matrix.target }} --no-default-features

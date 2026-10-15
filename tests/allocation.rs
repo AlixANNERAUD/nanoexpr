@@ -41,6 +41,16 @@ fn evaluation_never_allocates() {
     );
     assert_eq!(allocations(|| evaluate_with::<i64, _>("1 + (2", &())), 0);
     assert_eq!(allocations(|| evaluate_with::<i64, _>("1 / 0", &())), 0);
+    #[cfg(feature = "decimal")]
+    assert_eq!(
+        allocations(|| {
+            let value: nanoexpr::Decimal = nanoexpr::evaluate("1 / 3 * 3 + sqrt(2) - 0.1").unwrap();
+            let mut text = [0_u8; 64];
+            let mut cursor = std::io::Cursor::new(&mut text[..]);
+            std::io::Write::write_fmt(&mut cursor, format_args!("{value:.10}")).unwrap();
+        }),
+        0
+    );
     #[cfg(feature = "libm")]
     assert_eq!(
         allocations(|| nanoexpr::evaluate::<f64>(

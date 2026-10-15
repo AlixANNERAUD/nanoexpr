@@ -1,5 +1,7 @@
 //! The [`Math`] context of constants and scientific functions, and [`evaluate`] that uses it.
 
+#[cfg(feature = "decimal")]
+use crate::Decimal;
 use crate::{Context, Error, ErrorKind, Evaluator, Number};
 
 /// The usual constants and functions of a scientific calculator, for `f32` and `f64`.
@@ -158,4 +160,47 @@ where
     Math: Context<N>,
 {
     Evaluator::<Math>::new(&Math).evaluate(input)
+}
+
+#[cfg(feature = "decimal")]
+impl<const DIGITS: u32, const MAX_EXPONENT: i32> Context<Decimal<DIGITS, MAX_EXPONENT>> for Math {
+    fn variable(&self, name: &str) -> Option<Decimal<DIGITS, MAX_EXPONENT>> {
+        let literal = match name {
+            "pi" | "PI" => "3.14159265358979323846264338327950288",
+            "tau" => "6.28318530717958647692528676655900577",
+            "e" | "E" => "2.71828182845904523536028747135266250",
+            _ => return None,
+        };
+        Number::parse(literal)
+    }
+
+    fn call(
+        &self,
+        name: &str,
+        arguments: &[Decimal<DIGITS, MAX_EXPONENT>],
+    ) -> Option<Result<Decimal<DIGITS, MAX_EXPONENT>, ErrorKind>> {
+        let result = match (name, arguments) {
+            ("abs", &[x]) => Ok(x.abs()),
+            ("sign", &[x]) if x.is_zero() => Ok(x),
+            ("sign", &[x]) => Decimal::new(if x.is_negative() { -1 } else { 1 }, 0),
+            ("floor", &[x]) => x.floor(),
+            ("ceil", &[x]) => x.ceil(),
+            ("round", &[x]) => x.round(),
+            ("trunc", &[x]) => x.trunc(),
+            ("pow", &[x, y]) => x.power(y),
+            ("min", &[first, ref rest @ ..]) => Ok(rest.iter().fold(first, |a, b| a.min(*b))),
+            ("max", &[first, ref rest @ ..]) => Ok(rest.iter().fold(first, |a, b| a.max(*b))),
+            ("clamp", &[x, low, high]) if low <= high => Ok(x.clamp(low, high)),
+            ("clamp", &[_, _, _]) => Err(ErrorKind::Domain),
+            _ => {
+                let mut values = [0.0; 4];
+                for (value, argument) in values.iter_mut().zip(arguments) {
+                    *value = argument.to_f64();
+                }
+                let values = &values[..arguments.len().min(values.len())];
+                Context::<f64>::call(self, name, values)?.and_then(Decimal::from_f64)
+            }
+        };
+        Some(result)
+    }
 }
