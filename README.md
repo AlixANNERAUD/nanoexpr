@@ -30,6 +30,8 @@ conversions typed by users, or anywhere a whole scripting engine would be too mu
   `log`, `min`, `max`, `clamp` and more for `f32` and `f64`.
 - **Errors you can show.** A `Copy` error with a kind to match on (and translate) and the byte span of the input
   that caused it. Division by zero, domain errors and overflow are errors, not silent `NaN` or infinities.
+- **Calculator-exact decimals.** The optional `Decimal` type computes in decimal like TI and Casio calculators:
+  14 significant digits and exponents up to ±99 by default, so `0.1 + 0.2` is exactly `0.3`.
 - **Calculator-friendly syntax.** `^` and `**` are right-associative (`2^3^2 = 512`), `-2^2 = -4`, and `%` can be a
   percentage (`200 * 15% = 30`) instead of the remainder.
 - **No dependencies** besides the optional `libm`, and no `unsafe` code.
@@ -103,6 +105,42 @@ assert_eq!(calculator.evaluate::<f64>("10 mod 4"), Ok(2.0));
 ```
 
 The second generic parameter is the most arguments a call can take (8 by default).
+
+### Decimal numbers, like a pocket calculator
+
+Binary floats cannot represent most decimal fractions, so `0.1 + 0.2` is `0.30000000000000004` as an `f64`.
+Calculators compute in decimal instead. With the `decimal` feature, `Decimal` does the same: a decimal floating-point
+number of 14 significant digits with exponents up to ±99 by default, as on TI-83 and TI-84 calculators. Each
+operation rounds its exact result once, half to even, and checks against Python's `decimal` module show they match.
+
+```toml
+[dependencies]
+nanoexpr = { version = "0.1", features = ["decimal"] }
+```
+
+```rust
+# #[cfg(feature = "decimal")] {
+use nanoexpr::Decimal;
+
+let sum: Decimal = nanoexpr::evaluate("0.1 + 0.2").unwrap();
+assert_eq!(sum.to_string(), "0.3");
+
+let one: Decimal = nanoexpr::evaluate("1 / 3 * 3").unwrap();
+assert_eq!(one.to_string(), "0.99999999999999");
+assert_eq!(format!("{one:.10}"), "1");
+
+let price: Decimal = nanoexpr::evaluate("19.99 * 3").unwrap();
+assert_eq!(price.to_string(), "59.97");
+# }
+```
+
+Like a calculator, keep more digits than you show: formatting with a precision such as `{:.10}` rounds to that many
+significant digits, which hides the rounding of intermediate results. Choose other sizes with the generic
+parameters, such as `Decimal<10, 99>` or `Decimal<18, 9999>`.
+
+Arithmetic, powers with integer exponents, `abs`, `sign`, `floor`, `ceil`, `round`, `trunc`, `min`, `max` and
+`clamp` are computed in decimal. The other functions of `Math`, such as `sqrt`, `sin` or `ln`, go through `f64`, so
+their results are accurate to about 15 digits, except very close to a zero of the function, such as `sin(pi)`.
 
 ## C and C++
 
@@ -284,6 +322,7 @@ cargo run --release --features exp-rs --bin bench
 | Feature | Default | Effect |
 |---|---|---|
 | `libm` | ✅ | `Number` for `f32` and `f64`, `Math` and `evaluate`, through the pure Rust [`libm`](https://crates.io/crates/libm) |
+| `decimal` | | The `Decimal` type, and `Math` for it. Enables `libm` |
 
 ## License
 
