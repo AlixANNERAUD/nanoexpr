@@ -4,3 +4,4 @@
 /coverage.lcov
 /build/
 /ffi/build/
+/comparison/target/

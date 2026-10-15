@@ -1,0 +1,38 @@
+[package]
+name = "comparison"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[workspace]
+
+[features]
+nanoexpr = ["dep:nanoexpr"]
+meval = ["dep:meval"]
+evalexpr = ["dep:evalexpr"]
+fasteval = ["dep:fasteval"]
+exmex = ["dep:exmex"]
+exp-rs = ["dep:exp-rs"]
+size = []
+all = ["nanoexpr", "meval", "evalexpr", "fasteval", "exmex"]
+
+[dependencies]
+nanoexpr = { path = "..", optional = true }
+meval = { version = "=0.2.0", optional = true }
+evalexpr = { version = "=13.1.0", optional = true }
+fasteval = { version = "=0.2.4", optional = true }
+exmex = { version = "=0.21.0", optional = true }
+exp-rs = { version = "=0.2.0", optional = true }
+
+[lib]
+crate-type = ["rlib", "cdylib"]
+
+[profile.release]
+codegen-units = 1
+lto = true
+
+[profile.size]
+inherits = "release"
+opt-level = "z"
+panic = "abort"
+strip = true
