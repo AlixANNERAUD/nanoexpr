@@ -164,9 +164,28 @@ Like a calculator, keep more digits than you show: formatting with a precision s
 significant digits, which hides the rounding of intermediate results. Choose other sizes with the generic
 parameters, such as `Decimal<10, 99>` or `Decimal<18, 9999>`.
 
-Arithmetic, powers with integer exponents, `abs`, `sign`, `floor`, `ceil`, `round`, `trunc`, `min`, `max` and
-`clamp` are computed in decimal. The other functions of `Math`, such as `sqrt`, `sin` or `ln`, go through `f64`, so
-their results are accurate to about 15 digits, except very close to a zero of the function, such as `sin(pi)`.
+Every function of `Math` is computed in decimal too, without going through binary floats. Square roots, logarithms,
+exponentials, trigonometric and hyperbolic functions and their inverses, and powers with any exponent work on 36
+significant digits, then round once to the digits of the type. Arguments are taken as the exact decimals they are,
+so results stay accurate next to the zeros of the functions and across the whole exponent range:
+
+```rust
+# #[cfg(feature = "decimal")] {
+use nanoexpr::Decimal;
+
+let sine: Decimal = nanoexpr::evaluate("sin(3.1415926535898)").unwrap();
+assert_eq!(sine.to_string(), "-6.7615373566167e-15");
+
+let large: Decimal<18, 9999> = nanoexpr::evaluate("exp(1000)").unwrap();
+assert_eq!(large.to_string(), "1.97007111401704699e434");
+# }
+```
+
+Checked against [mpmath](https://mpmath.org) on 3,806 results with 14 digits and 2,025 with 18 digits and exponents
+up to ±9999, including arguments next to multiples of π, next to 1 and next to overflow, every result is correctly
+rounded. Correct rounding is not guaranteed: in rare cases a result can be one unit in the last place away.
+Trigonometric functions of arguments of `10^343` and beyond, where the digits of π kept run out, are `Domain`
+errors.
 
 ## C and C++
 
