@@ -36,6 +36,7 @@ jobs:
         uses: codecov/codecov-action@v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
+          slug: AlixANNERAUD/nanoexpr
           disable_search: true
           plugins: noop
           files: coverage.lcov
