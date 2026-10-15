@@ -256,6 +256,22 @@ fn compiled_fractions_match_evaluation() {
     differential::<Fraction, 8>(variables, 0x0f1e_2d3c_4b5a_6978, Fraction::eq);
 }
 
+#[cfg(feature = "exact")]
+#[test]
+fn compiled_exact_numbers_match_evaluation() {
+    use nanoexpr::{Exact, Number};
+    let number = |text: &str| Exact::parse(text).unwrap();
+    let variables = [
+        ("x", number("3")),
+        ("y", number("0")),
+        ("z", number("2.5")),
+        ("big", number("9e99")),
+    ];
+    differential::<Exact, 8>(variables, 0x5851_f42d_4c95_7f2d, |left, right| {
+        left == right
+    });
+}
+
 #[test]
 fn programs_are_reusable() {
     let mut code = [Instruction::default(); 16];
