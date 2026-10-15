@@ -3,8 +3,8 @@ use core::{ptr, slice};
 
 use nanoexpr::ErrorKind;
 use nanoexpr_c::{
-    DEFAULT_MAX_DEPTH, Error, Options, Status, nanoexpr_default_options, nanoexpr_evaluate,
-    nanoexpr_evaluate_with, nanoexpr_status_description,
+    DEFAULT_MAX_DEPTH, Error, MAX_ARGUMENTS, Options, Status, nanoexpr_default_options,
+    nanoexpr_evaluate, nanoexpr_evaluate_with, nanoexpr_status_description,
 };
 
 fn evaluate(input: &[u8]) -> Result<f64, Error> {
@@ -286,4 +286,53 @@ fn describes_statuses() {
     }
     assert_eq!(Status::TooDeep as i32, 13);
     assert_eq!(Status::UnknownError as i32, 15);
+}
+
+#[test]
+fn header_matches() {
+    let header = include_str!("../include/nanoexpr.h");
+    let statuses = [
+        Status::Ok,
+        Status::UnexpectedCharacter,
+        Status::UnexpectedToken,
+        Status::UnexpectedEnd,
+        Status::UnclosedParenthesis,
+        Status::InvalidNumber,
+        Status::UnknownVariable,
+        Status::UnknownFunction,
+        Status::TooManyArguments,
+        Status::ArgumentCount,
+        Status::DivisionByZero,
+        Status::Domain,
+        Status::Overflow,
+        Status::TooDeep,
+        Status::InvalidArgument,
+        Status::UnknownError,
+    ];
+    let declared: Vec<&str> = header
+        .lines()
+        .map(str::trim)
+        .filter(|line| line.starts_with("NANOEXPR_") && !line.starts_with("NANOEXPR_H"))
+        .map(|line| line.split([' ', ',']).next().unwrap())
+        .collect();
+    let expected: Vec<String> = statuses
+        .iter()
+        .enumerate()
+        .map(|(index, status)| {
+            assert_eq!(*status as usize, index);
+            let mut name = String::from("NANOEXPR");
+            for character in format!("{status:?}").chars() {
+                if character.is_uppercase() {
+                    name.push('_');
+                }
+                name.push(character.to_ascii_uppercase());
+            }
+            name
+        })
+        .collect();
+    assert_eq!(declared, expected);
+    assert!(header.contains(&format!("#define NANOEXPR_MAX_ARGUMENTS {MAX_ARGUMENTS}\n")));
+    assert!(header.contains(&format!(
+        "#define NANOEXPR_DEFAULT_MAX_DEPTH {DEFAULT_MAX_DEPTH}\n"
+    )));
 }
