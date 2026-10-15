@@ -11,8 +11,29 @@ pub trait Library {
     fn variables(&mut self, x: f64, y: f64) -> f64;
 }
 
+pub trait Compiled {
+    const NAME: &'static str;
+
+    fn compile(input: &'static str) -> impl FnMut(f64, f64) -> f64;
+}
+
 #[cfg(feature = "nanoexpr")]
 pub struct Nanoexpr;
+
+#[cfg(feature = "nanoexpr")]
+impl Compiled for Nanoexpr {
+    const NAME: &'static str = "nanoexpr";
+
+    fn compile(input: &'static str) -> impl FnMut(f64, f64) -> f64 {
+        let code = Box::leak(Box::new([nanoexpr::Instruction::default(); 64]));
+        let program: nanoexpr::Program<f64> = nanoexpr::compile(input, code).unwrap();
+        move |x, y| {
+            program
+                .evaluate(&([("x", x), ("y", y)], nanoexpr::Math))
+                .unwrap()
+        }
+    }
+}
 
 #[cfg(feature = "nanoexpr")]
 impl Library for Nanoexpr {
@@ -102,8 +123,43 @@ impl Library for Fasteval {
     }
 }
 
+#[cfg(feature = "fasteval")]
+impl Compiled for Fasteval {
+    const NAME: &'static str = "fasteval";
+
+    fn compile(input: &'static str) -> impl FnMut(f64, f64) -> f64 {
+        use fasteval::{Compiler, Evaler};
+        let mut slab = fasteval::Slab::new();
+        let compiled = fasteval::Parser::new()
+            .parse(input, &mut slab.ps)
+            .unwrap()
+            .from(&slab.ps)
+            .compile(&slab.ps, &mut slab.cs);
+        move |x, y| {
+            let mut namespace = |name: &str, _: Vec<f64>| match name {
+                "x" => Some(x),
+                "y" => Some(y),
+                _ => None,
+            };
+            compiled.eval(&slab, &mut namespace).unwrap()
+        }
+    }
+}
+
 #[cfg(feature = "exmex")]
 pub struct Exmex;
+
+#[cfg(feature = "exmex")]
+impl Compiled for Exmex {
+    const NAME: &'static str = "exmex";
+
+    fn compile(input: &'static str) -> impl FnMut(f64, f64) -> f64 {
+        use exmex::Express;
+        let expression = exmex::parse::<f64>(input).unwrap();
+        let variables = expression.var_names().len();
+        move |x, y| expression.eval(&[x, y][..variables]).unwrap()
+    }
+}
 
 #[cfg(feature = "exmex")]
 impl Library for Exmex {
