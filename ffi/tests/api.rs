@@ -1,4 +1,5 @@
 use core::ffi::{CStr, c_char, c_void};
+use core::mem::offset_of;
 use core::{ptr, slice};
 
 use nanoexpr::ErrorKind;
@@ -163,6 +164,17 @@ fn applies_options() {
     };
     assert_eq!(with(b"((1))", Some(&shallow)), error(Status::TooDeep, 2, 3));
 
+    let implicit = Options {
+        implicit_multiplication: true,
+        ..Options::default()
+    };
+    assert_eq!(
+        with(b"2pi", Some(&implicit)),
+        Ok(2.0 * core::f64::consts::PI)
+    );
+    assert_eq!(with(b"2(3 + 4)sqrt(4)", Some(&implicit)), Ok(28.0));
+    assert_eq!(evaluate(b"2pi"), error(Status::UnexpectedToken, 1, 3));
+
     let plain = Options {
         math: false,
         ..Options::default()
@@ -256,6 +268,7 @@ fn defaults() {
     assert!(options.math);
     assert!(!options.percentage);
     assert_eq!(options.max_depth, DEFAULT_MAX_DEPTH);
+    assert!(!options.implicit_multiplication);
 }
 
 #[test]
@@ -335,4 +348,31 @@ fn header_matches() {
     assert!(header.contains(&format!(
         "#define NANOEXPR_DEFAULT_MAX_DEPTH {DEFAULT_MAX_DEPTH}\n"
     )));
+
+    let options = &header[header.find("typedef struct nanoexpr_options {").unwrap()..];
+    let options = &options[..options.find("} nanoexpr_options;").unwrap()];
+    let fields: Vec<&str> = options
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.starts_with('/') && !line.starts_with('*') && line.ends_with(';'))
+        .map(|line| {
+            let line = line.trim_end_matches(';');
+            line.rsplit([' ', '*']).next().unwrap()
+        })
+        .collect();
+    let offsets = [
+        ("variable", offset_of!(Options, variable)),
+        ("function", offset_of!(Options, function)),
+        ("user_data", offset_of!(Options, user_data)),
+        ("math", offset_of!(Options, math)),
+        ("percentage", offset_of!(Options, percentage)),
+        ("max_depth", offset_of!(Options, max_depth)),
+        (
+            "implicit_multiplication",
+            offset_of!(Options, implicit_multiplication),
+        ),
+    ];
+    assert!(offsets.is_sorted_by_key(|(_, offset)| *offset));
+    let expected: Vec<&str> = offsets.iter().map(|(name, _)| *name).collect();
+    assert_eq!(fields, expected);
 }

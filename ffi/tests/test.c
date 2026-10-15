@@ -98,6 +98,7 @@ static void applies_options(void) {
     assert(options.math);
     assert(!options.percentage);
     assert(options.max_depth == NANOEXPR_DEFAULT_MAX_DEPTH);
+    assert(!options.implicit_multiplication);
 
     options.percentage = true;
     double result = 0;
@@ -106,6 +107,12 @@ static void applies_options(void) {
 
     options.max_depth = 2;
     fails(&options, "((1))", NANOEXPR_TOO_DEEP, 2, 3);
+
+    options = nanoexpr_default_options();
+    fails(&options, "2(3 + 4)", NANOEXPR_UNEXPECTED_TOKEN, 1, 2);
+    options.implicit_multiplication = true;
+    assert(nanoexpr_evaluate_with("2(3 + 4)", 8, &options, &result, NULL) == NANOEXPR_OK);
+    assert(result == 14);
 }
 
 static void rejects_null_pointers(void) {

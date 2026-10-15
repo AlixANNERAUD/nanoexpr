@@ -57,8 +57,9 @@ Use it for:
   `min`, `max`, `clamp`, rounding and more.
 - **Errors you can show.** A `Copy` error with a kind to match on (and translate) and the byte span of the input
   that caused it. Division by zero, domain errors and overflow are errors, not silent `NaN` or infinities.
-- **Calculator-friendly syntax.** `^` and `**` are right-associative (`2^3^2 = 512`), `-2^2 = -4`, and `%` can be a
-  percentage (`200 * 15% = 30`) instead of the remainder.
+- **Calculator-friendly syntax.** `^` and `**` are right-associative (`2^3^2 = 512`), `-2^2 = -4`, `%` can be a
+  percentage (`200 * 15% = 30`) instead of the remainder, and implicit multiplication (`2pi`, `3(x + 1)`) can be
+  turned on.
 - **Comparisons and logic for rules.** `<`, `==`, `&&`, `||`, `!` and `c ? a : b` with C precedences, giving `1` or
   `0`, and short-circuiting so `x != 0 && 1 / x > 2` is no division by zero.
 - **C and C++ bindings** with a header and a CMake project, still allocation-free.
@@ -139,10 +140,12 @@ use nanoexpr::{Evaluator, Math, PercentSign};
 
 let calculator = Evaluator::<_, 4>::new(&Math)
     .percent_sign(PercentSign::Percentage)
+    .implicit_multiplication(true)
     .max_depth(16);
 
 assert_eq!(calculator.evaluate::<f64>("200 * 15%"), Ok(30.0));
 assert_eq!(calculator.evaluate::<f64>("10 mod 4"), Ok(2.0));
+assert_eq!(calculator.evaluate::<f64>("2(3 + 4)sqrt(4)"), Ok(28.0));
 ```
 
 The second generic parameter is the most arguments a call can take (8 by default).
@@ -252,6 +255,11 @@ From the loosest to the tightest binding:
 
 Numbers are written `42`, `3.14`, `.5`, `5.` or `1.5e-3`. Names start with a letter or `_` and continue with
 letters, digits or `_`.
+
+With `implicit_multiplication(true)`, off by default, a name or a `(` directly after an operand multiplies it, as on
+a calculator: `2pi`, `2x`, `3sqrt(4)`, `2(3 + 4)`, `(1 + 2)(3 + 4)` and `x y` are products. It has the precedence of
+`*`, as on TI calculators, so `1/2x` is `(1/2) * x`. A name followed by `(` stays a call, so `x(2)` calls `x`, and a
+number never multiplies implicitly, so `2 3` is still an error. `2e3` is the number `2000`, `2e` is `2 * e`.
 
 Values are always numbers, as on TI calculators and in C: comparisons give `1` or `0`, and `&&`, `||`, `!` and
 `? :` read zero as false and anything else as true. The precedences are those of C, so equality binds looser than

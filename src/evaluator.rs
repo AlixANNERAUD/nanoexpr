@@ -52,6 +52,8 @@ pub struct Evaluator<'c, C: ?Sized, const ARGUMENTS: usize = 8> {
     max_depth: usize,
     /// How `%` is read.
     percent_sign: PercentSign,
+    /// Whether an operand directly followed by a name or a `(` multiplies them.
+    implicit_multiplication: bool,
 }
 
 impl<'c, C: ?Sized, const ARGUMENTS: usize> Evaluator<'c, C, ARGUMENTS> {
@@ -64,6 +66,7 @@ impl<'c, C: ?Sized, const ARGUMENTS: usize> Evaluator<'c, C, ARGUMENTS> {
             context,
             max_depth: Self::DEFAULT_MAX_DEPTH,
             percent_sign: PercentSign::Remainder,
+            implicit_multiplication: false,
         }
     }
 
@@ -78,6 +81,29 @@ impl<'c, C: ?Sized, const ARGUMENTS: usize> Evaluator<'c, C, ARGUMENTS> {
     /// Sets how the `%` sign is read.
     pub const fn percent_sign(mut self, percent_sign: PercentSign) -> Self {
         self.percent_sign = percent_sign;
+        self
+    }
+
+    /// Sets whether an operand directly followed by a name or a `(` multiplies them, as on a calculator.
+    ///
+    /// Off by default. When on, `2pi`, `2x`, `3sqrt(4)`, `2(3 + 4)`, `(1 + 2)(3 + 4)` and `x y` are products.
+    /// Implicit multiplication has the precedence of `*`, as on TI calculators, so `1/2x` is `(1/2) * x` and
+    /// `2x^2` is `2 * x^2`. A name directly followed by `(` remains a call: `x(2)` calls the function `x`. A number
+    /// does not multiply the operand before it, so `2 3` and `x 2` stay errors, and `2e3` is still the number
+    /// `2000` while `2e` is `2 * e`.
+    ///
+    /// ```
+    /// # #[cfg(feature = "libm")] {
+    /// use nanoexpr::{Evaluator, Math};
+    ///
+    /// let context = ([("x", 3.0)], Math);
+    /// let calculator = Evaluator::<_>::new(&context).implicit_multiplication(true);
+    /// assert_eq!(calculator.evaluate::<f64>("2x + 3(x - 1)"), Ok(12.0));
+    /// assert_eq!(calculator.evaluate::<f64>("1/2x"), Ok(1.5));
+    /// # }
+    /// ```
+    pub const fn implicit_multiplication(mut self, implicit_multiplication: bool) -> Self {
+        self.implicit_multiplication = implicit_multiplication;
         self
     }
 
@@ -115,6 +141,8 @@ enum Operator {
     Subtract,
     /// `*`
     Multiply,
+    /// A name or `(` directly after an operand, with implicit multiplication on.
+    ImplicitMultiply,
     /// `/`
     Divide,
     /// `%` or `mod`
@@ -153,7 +181,7 @@ impl Operator {
         match self {
             Self::Add => left.add(right),
             Self::Subtract => left.subtract(right),
-            Self::Multiply => left.multiply(right),
+            Self::Multiply | Self::ImplicitMultiply => left.multiply(right),
             Self::Divide => left.divide(right),
             Self::Remainder => left.remainder(right),
             Self::Power => left.power(right),
@@ -299,6 +327,9 @@ impl<'i, N: Number, C: Context<N> + ?Sized, const ARGUMENTS: usize>
             Kind::And => Some((Operator::And, AND)),
             Kind::Or => Some((Operator::Or, OR)),
             Kind::Question => Some((Operator::Conditional, CONDITIONAL)),
+            Kind::Name(_) | Kind::LeftParenthesis if self.evaluator.implicit_multiplication => {
+                Some((Operator::ImplicitMultiply, MULTIPLICATIVE))
+            }
             _ => None,
         }
     }
@@ -318,7 +349,9 @@ impl<'i, N: Number, C: Context<N> + ?Sized, const ARGUMENTS: usize>
             if left_power < minimum {
                 break;
             }
-            self.advance()?;
+            if !matches!(operator, Operator::ImplicitMultiply) {
+                self.advance()?;
+            }
             left = match operator {
                 Operator::Percentage => self.compute(start, || {
                     left.divide(N::parse("100").ok_or(ErrorKind::Overflow)?)

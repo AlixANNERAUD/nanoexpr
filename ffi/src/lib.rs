@@ -174,6 +174,8 @@ pub struct Options {
     pub percentage: bool,
     /// Most levels of nested parentheses, calls and operators.
     pub max_depth: usize,
+    /// Whether an operand directly followed by a name or a `(` multiplies them, as in `2pi` or `2(x + 1)`.
+    pub implicit_multiplication: bool,
 }
 
 impl Default for Options {
@@ -185,6 +187,7 @@ impl Default for Options {
             math: true,
             percentage: false,
             max_depth: DEFAULT_MAX_DEPTH,
+            implicit_multiplication: false,
         }
     }
 }
@@ -249,6 +252,7 @@ fn run<C: Context<f64>>(
         } else {
             PercentSign::Remainder
         })
+        .implicit_multiplication(options.implicit_multiplication)
         .evaluate(input)
 }
 
@@ -308,8 +312,8 @@ unsafe fn evaluate_into(
     report.kind
 }
 
-/// Returns the default options: no callbacks, built-in math functions, `%` as the remainder and a depth limit of
-/// [`DEFAULT_MAX_DEPTH`].
+/// Returns the default options: no callbacks, built-in math functions, `%` as the remainder, a depth limit of
+/// [`DEFAULT_MAX_DEPTH`] and no implicit multiplication.
 #[unsafe(no_mangle)]
 pub extern "C" fn nanoexpr_default_options() -> Options {
     Options::default()
