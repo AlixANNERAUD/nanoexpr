@@ -19,6 +19,7 @@ default = ["libm"]
 libm = ["dep:libm"]
 decimal = ["fraction"]
 fraction = []
+exact = ["decimal", "fraction"]
 
 [dependencies]
 libm = { version = "0.2", optional = true }

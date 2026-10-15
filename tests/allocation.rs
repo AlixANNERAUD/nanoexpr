@@ -93,6 +93,27 @@ fn evaluation_never_allocates() {
         }),
         0
     );
+    #[cfg(feature = "exact")]
+    assert_eq!(
+        allocations(|| {
+            let fraction: nanoexpr::Exact =
+                nanoexpr::evaluate("(1/3 + 1/6) * 0.75 - sqrt(4/9) + max(1/3, 0.2)").unwrap();
+            let decimal: nanoexpr::Exact =
+                nanoexpr::evaluate("1/3 + sqrt(2) + (2 ^ 62) / 3 * 7 + (1/3) ^ 100 + pi").unwrap();
+            let error = nanoexpr::evaluate::<nanoexpr::Exact>("sqrt(-2)").unwrap_err();
+            let mut text = [0_u8; 96];
+            let mut cursor = std::io::Cursor::new(&mut text[..]);
+            std::io::Write::write_fmt(
+                &mut cursor,
+                format_args!(
+                    "{fraction:#} {decimal:.10} {} {error}",
+                    fraction.to_decimal()
+                ),
+            )
+            .unwrap();
+        }),
+        0
+    );
     #[cfg(feature = "libm")]
     assert_eq!(
         allocations(|| nanoexpr::evaluate::<f64>(

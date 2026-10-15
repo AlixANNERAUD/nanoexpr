@@ -1,6 +1,9 @@
 //! Conversions between [`Decimal`] and [`Fraction`], such as the fraction a decimal is close to, like the `►Frac`
 //! key of TI calculators.
 
+#[cfg(feature = "exact")]
+use core::cmp::Ordering;
+
 use super::{Decimal, digit_count, power_of_ten};
 use crate::{ErrorKind, Fraction};
 
@@ -129,5 +132,43 @@ impl<const DIGITS: u32, const MAX_EXPONENT: i32> TryFrom<Decimal<DIGITS, MAX_EXP
             u128::from(value.coefficient),
             i64::from(value.exponent),
         )
+    }
+}
+
+#[cfg(feature = "exact")]
+impl<const DIGITS: u32, const MAX_EXPONENT: i32> Decimal<DIGITS, MAX_EXPONENT> {
+    /// Returns how the decimal orders against `fraction`, exactly.
+    ///
+    /// The magnitudes compare as `coefficient × denominator × 10^exponent` against the numerator, whose product
+    /// fits 128 bits, so a power of ten that overflows decides on its own.
+    pub(crate) fn cmp_fraction(self, fraction: Fraction) -> Ordering {
+        let sign = |negative: bool, zero: bool| match (zero, negative) {
+            (true, _) => 0,
+            (false, true) => -1,
+            (false, false) => 1,
+        };
+        let sign_order = sign(self.negative, self.is_zero())
+            .cmp(&sign(fraction.is_negative(), fraction.is_zero()));
+        if sign_order != Ordering::Equal || self.is_zero() {
+            return sign_order;
+        }
+        let scaled = u128::from(self.coefficient) * u128::from(fraction.denominator());
+        let numerator = u128::from(fraction.numerator());
+        let shift = self.exponent.unsigned_abs();
+        let scale = (shift <= 38).then(|| power_of_ten(shift));
+        let magnitude = if self.exponent >= 0 {
+            scale
+                .and_then(|scale| scaled.checked_mul(scale))
+                .map_or(Ordering::Greater, |left| left.cmp(&numerator))
+        } else {
+            scale
+                .and_then(|scale| numerator.checked_mul(scale))
+                .map_or(Ordering::Less, |right| scaled.cmp(&right))
+        };
+        if self.negative {
+            magnitude.reverse()
+        } else {
+            magnitude
+        }
     }
 }
