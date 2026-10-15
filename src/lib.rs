@@ -8,6 +8,8 @@ mod context;
 mod decimal;
 mod error;
 mod evaluator;
+#[cfg(feature = "exact")]
+mod exact;
 #[cfg(feature = "fraction")]
 mod fraction;
 mod lexer;
@@ -22,6 +24,8 @@ pub use context::{Context, Functions, Variables};
 pub use decimal::{Decimal, ParseDecimalError};
 pub use error::{Error, ErrorKind, Span};
 pub use evaluator::{Evaluator, PercentSign, evaluate_with};
+#[cfg(feature = "exact")]
+pub use exact::Exact;
 #[cfg(feature = "fraction")]
 pub use fraction::{Fraction, ParseFractionError};
 #[cfg(any(feature = "libm", feature = "fraction"))]
