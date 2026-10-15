@@ -50,6 +50,12 @@ pub enum ErrorKind {
     Overflow,
     /// Parentheses, calls or operators nested deeper than the evaluator allows.
     TooDeep,
+    /// An operation the number type does not implement, such as a comparison of a custom [`Number`] type that
+    /// does not override [`Number::compare`].
+    ///
+    /// [`Number`]: crate::Number
+    /// [`Number::compare`]: crate::Number::compare
+    Unsupported,
 }
 
 impl ErrorKind {
@@ -69,6 +75,7 @@ impl ErrorKind {
             Self::Domain => "operand out of domain",
             Self::Overflow => "overflow",
             Self::TooDeep => "expression nested too deeply",
+            Self::Unsupported => "unsupported operation",
         }
     }
 }

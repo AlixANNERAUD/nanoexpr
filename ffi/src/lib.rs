@@ -27,7 +27,7 @@ pub const DEFAULT_MAX_DEPTH: usize = Evaluator::<(), MAX_ARGUMENTS>::DEFAULT_MAX
 
 /// Outcome of an evaluation: `nanoexpr_status` in C.
 ///
-/// Every [`ErrorKind`] has a status of the same name, in the same order.
+/// Every [`ErrorKind`] that evaluating in `f64` can produce has a status of the same name, in the same order.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Status {

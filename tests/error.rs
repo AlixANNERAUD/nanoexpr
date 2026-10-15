@@ -1,6 +1,6 @@
 use nanoexpr::{Error, ErrorKind, Span};
 
-const KINDS: [(ErrorKind, &str); 13] = [
+const KINDS: [(ErrorKind, &str); 14] = [
     (ErrorKind::UnexpectedCharacter, "unexpected character"),
     (ErrorKind::UnexpectedToken, "unexpected token"),
     (ErrorKind::UnexpectedEnd, "unexpected end of expression"),
@@ -14,6 +14,7 @@ const KINDS: [(ErrorKind, &str); 13] = [
     (ErrorKind::Domain, "operand out of domain"),
     (ErrorKind::Overflow, "overflow"),
     (ErrorKind::TooDeep, "expression nested too deeply"),
+    (ErrorKind::Unsupported, "unsupported operation"),
 ];
 
 #[test]
