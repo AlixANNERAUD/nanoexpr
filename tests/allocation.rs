@@ -44,7 +44,10 @@ fn evaluation_never_allocates() {
     #[cfg(feature = "decimal")]
     assert_eq!(
         allocations(|| {
-            let value: nanoexpr::Decimal = nanoexpr::evaluate("1 / 3 * 3 + sqrt(2) - 0.1").unwrap();
+            let value: nanoexpr::Decimal = nanoexpr::evaluate(
+                "1 / 3 * 3 + sqrt(2) - 0.1 + sin(1e22) * ln(2) + atan2(1, 2) ^ 0.5",
+            )
+            .unwrap();
             let mut text = [0_u8; 64];
             let mut cursor = std::io::Cursor::new(&mut text[..]);
             std::io::Write::write_fmt(&mut cursor, format_args!("{value:.10}")).unwrap();
