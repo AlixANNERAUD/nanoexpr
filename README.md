@@ -50,7 +50,8 @@ Use it for:
 - **Any number type.** `f32`, `f64`, every primitive integer, or your own type (fixed-point...) through the `Number`
   trait. Integers report overflow instead of wrapping.
 - **Calculator-exact decimals.** The optional `Decimal` type computes in decimal like TI and Casio calculators:
-  14 significant digits and exponents up to ±99 by default, so `0.1 + 0.2` is exactly `0.3`.
+  14 significant digits and exponents up to ±99 by default, so `0.1 + 0.2` is exactly `0.3`, and turns results
+  into fractions like the `►Frac` key: `1/3 + 1/6` is `1/2`.
 - **Variables and functions from your code.** The evaluator asks a `Context` for each name it meets: implement the
   trait, pass `(name, value)` pairs, or wrap closures. Contexts compose as tuples.
 - **Scientific functions included.** `Math` provides `pi`, `e`, `sqrt`, `sin`, `cos`, `tan`, `exp`, `ln`, `log`,
@@ -207,6 +208,25 @@ assert_eq!(price.to_string(), "59.97");
 Like a calculator, keep more digits than you show: formatting with a precision such as `{:.10}` rounds to that many
 significant digits, which hides the rounding of intermediate results. Choose other sizes with the generic
 parameters, such as `Decimal<10, 99>` or `Decimal<18, 9999>`.
+
+Like the `►Frac` key of TI calculators, `to_fraction` finds the simplest fraction a result is, up to a largest
+denominator (9999 on TI-83 and TI-84), within one unit of its last digit. It gives a `Fraction` that displays as
+`7/2`, or as the mixed number `3 1/2` with `{:#}`, and `None` for numbers such as `pi`:
+
+```rust
+# #[cfg(feature = "decimal")] {
+use nanoexpr::Decimal;
+
+let sum: Decimal = nanoexpr::evaluate("1/3 + 1/6").unwrap();
+assert_eq!(sum.to_fraction(9999).unwrap().to_string(), "1/2");
+
+let one: Decimal = nanoexpr::evaluate("1 / 3 * 3").unwrap();
+assert_eq!(one.to_fraction(9999).unwrap().to_string(), "1");
+
+let mixed: Decimal = nanoexpr::evaluate("2 + 5/4").unwrap();
+assert_eq!(format!("{:#}", mixed.to_fraction(9999).unwrap()), "3 1/4");
+# }
+```
 
 Every function of `Math` is computed in decimal too, without going through binary floats. Square roots, logarithms,
 exponentials, trigonometric and hyperbolic functions and their inverses, and powers with any exponent work on 36
