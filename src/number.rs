@@ -11,10 +11,10 @@ use crate::ErrorKind;
 ///
 /// Each operation returns the [`ErrorKind`] to report instead of producing a silent `NaN`, infinity or wrapped value.
 ///
-/// Comparisons (`<`, `==`...) and logic operators (`&&`, `||`, `!`, `? :`) need [`Number::compare`],
-/// [`Number::is_zero`] and [`Number::from_bool`]. They have default implementations, so a type that only
-/// implements arithmetic keeps working: override [`Number::compare`] to support comparisons and logic, as the
-/// other two are derived from it.
+/// Comparisons (`<`, `==`...), logic operators (`&&`, `||`, `!`, `? :`) and factorials (`n!`) need
+/// [`Number::compare`], [`Number::is_zero`] and [`Number::from_bool`]. They have default implementations, so a type
+/// that only implements arithmetic keeps working: override [`Number::compare`] to support comparisons, logic and
+/// factorials, as the others are derived from it.
 pub trait Number: Copy + Default {
     /// Parses a literal such as `42`, `3.5` or `1e3`, or returns `None` if the type cannot represent it.
     fn parse(literal: &str) -> Option<Self>;
