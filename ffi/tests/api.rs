@@ -113,6 +113,7 @@ fn evaluates() {
     assert_eq!(evaluate(b"2 * (3 + 4) ^ 2 / sqrt(16)"), Ok(24.5));
     assert_eq!(evaluate(b"7 % 4"), Ok(3.0));
     assert_eq!(evaluate(b"max(1, 5, 3)"), Ok(5.0));
+    assert_eq!(evaluate(b"5! + fact(3) + 2^3!"), Ok(190.0));
 }
 
 #[test]
@@ -129,6 +130,8 @@ fn reports_errors_with_spans() {
     assert_eq!(evaluate(b"x + 1"), error(Status::UnknownVariable, 0, 1));
     assert_eq!(evaluate(b"f(1)"), error(Status::UnknownFunction, 0, 1));
     assert_eq!(evaluate(b"sqrt(-1)"), error(Status::Domain, 0, 8));
+    assert_eq!(evaluate(b"1 + 2.5!"), error(Status::Domain, 4, 8));
+    assert_eq!(evaluate(b"171!"), error(Status::Overflow, 0, 4));
     assert_eq!(evaluate(b"1 $ 2"), error(Status::UnexpectedCharacter, 2, 3));
     assert_eq!(evaluate(b""), error(Status::UnexpectedEnd, 0, 0));
 }
