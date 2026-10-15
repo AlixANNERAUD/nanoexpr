@@ -27,6 +27,28 @@ pub(crate) enum Kind<'a> {
     RightParenthesis,
     /// `,`
     Comma,
+    /// `<`
+    Less,
+    /// `<=`
+    LessEqual,
+    /// `>`
+    Greater,
+    /// `>=`
+    GreaterEqual,
+    /// `==`
+    Equal,
+    /// `!=`
+    NotEqual,
+    /// `&&`
+    And,
+    /// `||`
+    Or,
+    /// `!`
+    Not,
+    /// `?`
+    Question,
+    /// `:`
+    Colon,
     /// The end of the input, returned again on every later call.
     End,
 }
@@ -112,9 +134,38 @@ impl<'a> Lexer<'a> {
         kind
     }
 
+    /// Skips a symbol of two bytes and returns `double` if its second byte is `second`, or skips a symbol of one
+    /// byte and returns `single` otherwise.
+    fn either(&mut self, second: u8, double: Kind<'a>, single: Kind<'a>) -> Kind<'a> {
+        if self.byte(1) == Some(second) {
+            self.symbol(double, 2)
+        } else {
+            self.symbol(single, 1)
+        }
+    }
+
+    /// Reads a comparison or logic operator starting with `byte`.
+    ///
+    /// Kept apart from [`Lexer::next`] so that arithmetic, the most common, is lexed as fast as without them.
+    #[inline(never)]
+    fn logic(&mut self, byte: u8) -> Result<Kind<'a>, ErrorKind> {
+        match byte {
+            b'<' => Ok(self.either(b'=', Kind::LessEqual, Kind::Less)),
+            b'>' => Ok(self.either(b'=', Kind::GreaterEqual, Kind::Greater)),
+            b'!' => Ok(self.either(b'=', Kind::NotEqual, Kind::Not)),
+            b'=' if self.byte(1) == Some(b'=') => Ok(self.symbol(Kind::Equal, 2)),
+            b'&' if self.byte(1) == Some(b'&') => Ok(self.symbol(Kind::And, 2)),
+            b'|' if self.byte(1) == Some(b'|') => Ok(self.symbol(Kind::Or, 2)),
+            b'?' => Ok(self.symbol(Kind::Question, 1)),
+            b':' => Ok(self.symbol(Kind::Colon, 1)),
+            _ => Err(ErrorKind::UnexpectedCharacter),
+        }
+    }
+
     /// Reads the next token, skipping whitespace before it.
     ///
     /// An unexpected character is reported with the span of the whole character, even when it is several bytes long.
+    #[inline(always)]
     pub fn next(&mut self) -> Result<Token<'a>, Error> {
         while self.byte(0).is_some_and(|byte| byte.is_ascii_whitespace()) {
             self.position += 1;
@@ -134,7 +185,7 @@ impl<'a> Lexer<'a> {
             Some(b'(') => Ok(self.symbol(Kind::LeftParenthesis, 1)),
             Some(b')') => Ok(self.symbol(Kind::RightParenthesis, 1)),
             Some(b',') => Ok(self.symbol(Kind::Comma, 1)),
-            Some(_) => Err(ErrorKind::UnexpectedCharacter),
+            Some(byte) => self.logic(byte),
         };
         match kind {
             Ok(kind) => Ok(Token {
@@ -186,6 +237,42 @@ mod tests {
                 Kind::Comma,
             ],
         );
+    }
+
+    #[test]
+    fn comparison_and_logic_operators() {
+        assert_kinds(
+            "< <= > >= == != && || ! ? : !!x<=-1",
+            &[
+                Kind::Less,
+                Kind::LessEqual,
+                Kind::Greater,
+                Kind::GreaterEqual,
+                Kind::Equal,
+                Kind::NotEqual,
+                Kind::And,
+                Kind::Or,
+                Kind::Not,
+                Kind::Question,
+                Kind::Colon,
+                Kind::Not,
+                Kind::Not,
+                Kind::Name("x"),
+                Kind::LessEqual,
+                Kind::Minus,
+                Kind::Number("1"),
+            ],
+        );
+    }
+
+    #[test]
+    fn halves_of_operators_are_unexpected() {
+        for input in ["1 = 2", "1 & 2", "1 | 2"] {
+            assert_eq!(
+                Lexer::new(input).nth_error(),
+                Error::new(ErrorKind::UnexpectedCharacter, Span::new(2, 3))
+            );
+        }
     }
 
     #[test]

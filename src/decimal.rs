@@ -460,6 +460,18 @@ impl<const DIGITS: u32, const MAX_EXPONENT: i32> Number for Decimal<DIGITS, MAX_
     fn negate(self) -> Result<Self, ErrorKind> {
         Ok(self.flip())
     }
+
+    fn compare(self, rhs: Self) -> Result<Ordering, ErrorKind> {
+        Ok(self.cmp(&rhs))
+    }
+
+    fn is_zero(self) -> Result<bool, ErrorKind> {
+        Ok(Self::is_zero(self))
+    }
+
+    fn from_bool(value: bool) -> Result<Self, ErrorKind> {
+        Ok(if value { Self::one() } else { Self::ZERO })
+    }
 }
 
 impl<const DIGITS: u32, const MAX_EXPONENT: i32> PartialOrd for Decimal<DIGITS, MAX_EXPONENT> {

@@ -1,8 +1,10 @@
 //! Evaluates expressions in a single pass, by precedence climbing.
 //!
 //! The value of each operand is computed as soon as it is parsed, so nothing is kept but the current token and
-//! the values on the call stack.
+//! the values on the call stack. The operands `&&`, `||` and `? :` do not need are still parsed, to check their
+//! syntax, but not computed.
 
+use core::cmp::Ordering;
 use core::marker::PhantomData;
 
 use crate::lexer::{Kind, Lexer, Token};
@@ -19,6 +21,15 @@ pub enum PercentSign {
 }
 
 /// Evaluates expressions against a [`Context`], with configurable limits and syntax.
+///
+/// `&&`, `||` and `condition ? then : otherwise` short-circuit: the operand they do not need is parsed, so its
+/// syntax is checked, but it is not computed and the context is not asked for its names. So `x != 0 && 1 / x > 2`
+/// is `0` rather than a division by zero when `x` is zero, and `x == 0 ? 0 : 1 / x` is `0`.
+///
+/// Errors that depend only on the text (syntax errors, [`ErrorKind::InvalidNumber`], [`ErrorKind::TooDeep`] and
+/// [`ErrorKind::TooManyArguments`]) are reported wherever they are, even in an operand that is not computed, and
+/// before any other error: a malformed expression is reported as such whatever the values. Otherwise the first
+/// error in evaluation order is reported.
 ///
 /// `ARGUMENTS` is the most arguments a single function call can take. They are held in an array on the stack, so
 /// a call uses `ARGUMENTS * size_of::<N>()` bytes of stack for each level of nesting.
@@ -41,6 +52,8 @@ pub struct Evaluator<'c, C: ?Sized, const ARGUMENTS: usize = 8> {
     max_depth: usize,
     /// How `%` is read.
     percent_sign: PercentSign,
+    /// Whether an operand directly followed by a name or a `(` multiplies them.
+    implicit_multiplication: bool,
 }
 
 impl<'c, C: ?Sized, const ARGUMENTS: usize> Evaluator<'c, C, ARGUMENTS> {
@@ -53,6 +66,7 @@ impl<'c, C: ?Sized, const ARGUMENTS: usize> Evaluator<'c, C, ARGUMENTS> {
             context,
             max_depth: Self::DEFAULT_MAX_DEPTH,
             percent_sign: PercentSign::Remainder,
+            implicit_multiplication: false,
         }
     }
 
@@ -70,6 +84,29 @@ impl<'c, C: ?Sized, const ARGUMENTS: usize> Evaluator<'c, C, ARGUMENTS> {
         self
     }
 
+    /// Sets whether an operand directly followed by a name or a `(` multiplies them, as on a calculator.
+    ///
+    /// Off by default. When on, `2pi`, `2x`, `3sqrt(4)`, `2(3 + 4)`, `(1 + 2)(3 + 4)` and `x y` are products.
+    /// Implicit multiplication has the precedence of `*`, as on TI calculators, so `1/2x` is `(1/2) * x` and
+    /// `2x^2` is `2 * x^2`. A name directly followed by `(` remains a call: `x(2)` calls the function `x`. A number
+    /// does not multiply the operand before it, so `2 3` and `x 2` stay errors, and `2e3` is still the number
+    /// `2000` while `2e` is `2 * e`.
+    ///
+    /// ```
+    /// # #[cfg(feature = "libm")] {
+    /// use nanoexpr::{Evaluator, Math};
+    ///
+    /// let context = ([("x", 3.0)], Math);
+    /// let calculator = Evaluator::<_>::new(&context).implicit_multiplication(true);
+    /// assert_eq!(calculator.evaluate::<f64>("2x + 3(x - 1)"), Ok(12.0));
+    /// assert_eq!(calculator.evaluate::<f64>("1/2x"), Ok(1.5));
+    /// # }
+    /// ```
+    pub const fn implicit_multiplication(mut self, implicit_multiplication: bool) -> Self {
+        self.implicit_multiplication = implicit_multiplication;
+        self
+    }
+
     /// Evaluates `input`.
     pub fn evaluate<N: Number>(&self, input: &str) -> Result<N, Error>
     where
@@ -82,18 +119,20 @@ impl<'c, C: ?Sized, const ARGUMENTS: usize> Evaluator<'c, C, ARGUMENTS> {
             token,
             end: 0,
             depth: 0,
+            skipping: false,
+            failure: None,
             evaluator: self,
             number: PhantomData,
         };
         let value = parser.expression(0)?;
         match parser.token.kind {
-            Kind::End => Ok(value),
+            Kind::End => parser.failure.map_or(Ok(value), Err),
             _ => Err(Error::new(ErrorKind::UnexpectedToken, parser.token.span)),
         }
     }
 }
 
-/// A binary operator, mapped to a [`Number`] operation.
+/// An infix or postfix operator.
 #[derive(Clone, Copy)]
 enum Operator {
     /// `+`
@@ -102,26 +141,92 @@ enum Operator {
     Subtract,
     /// `*`
     Multiply,
+    /// A name or `(` directly after an operand, with implicit multiplication on.
+    ImplicitMultiply,
     /// `/`
     Divide,
     /// `%` or `mod`
     Remainder,
     /// `^` or `**`
     Power,
+    /// `<`
+    Less,
+    /// `<=`
+    LessEqual,
+    /// `>`
+    Greater,
+    /// `>=`
+    GreaterEqual,
+    /// `==`
+    Equal,
+    /// `!=`
+    NotEqual,
+    /// `&&`, which skips its right operand when the left one is false.
+    And,
+    /// `||`, which skips its right operand when the left one is true.
+    Or,
+    /// `? :`, which has a middle operand and skips the branch not taken.
+    Conditional,
+    /// A postfix `%` percentage, which has no right operand.
+    Percentage,
 }
 
+impl Operator {
+    /// Applies an operator that computes its result from two operands to `left` and `right`.
+    fn apply<N: Number>(self, left: N, right: N) -> Result<N, ErrorKind> {
+        let ordering = |accept: fn(Ordering) -> bool| {
+            left.compare(right)
+                .and_then(|ordering| N::from_bool(accept(ordering)))
+        };
+        match self {
+            Self::Add => left.add(right),
+            Self::Subtract => left.subtract(right),
+            Self::Multiply | Self::ImplicitMultiply => left.multiply(right),
+            Self::Divide => left.divide(right),
+            Self::Remainder => left.remainder(right),
+            Self::Power => left.power(right),
+            Self::Less => ordering(Ordering::is_lt),
+            Self::LessEqual => ordering(Ordering::is_le),
+            Self::Greater => ordering(Ordering::is_gt),
+            Self::GreaterEqual => ordering(Ordering::is_ge),
+            Self::Equal => ordering(Ordering::is_eq),
+            Self::NotEqual => ordering(Ordering::is_ne),
+            Self::And | Self::Or | Self::Conditional | Self::Percentage => {
+                Err(ErrorKind::Unsupported)
+            }
+        }
+    }
+}
+
+/// Binding powers of the conditional `? :`, the loosest operator: the left one is higher, so it associates to the
+/// right and `a ? b : c ? d : e` is `a ? b : (c ? d : e)`.
+const CONDITIONAL: (u8, u8) = (2, 1);
+/// Binding powers of `||`, associating to the left.
+const OR: (u8, u8) = (3, 4);
+/// Binding powers of `&&`, tighter than [`OR`] as in C.
+const AND: (u8, u8) = (5, 6);
+/// Binding powers of `==` and `!=`, looser than [`RELATIONAL`] as in C, so `a < b == c < d` compares two
+/// comparisons.
+const EQUALITY: (u8, u8) = (7, 8);
+/// Binding powers of `<`, `<=`, `>` and `>=`, looser than arithmetic.
+const RELATIONAL: (u8, u8) = (9, 10);
 /// Binding powers of `+` and `-`, on their left and right: the right one is higher, so they associate to the left.
-const ADDITIVE: (u8, u8) = (1, 2);
+const ADDITIVE: (u8, u8) = (11, 12);
 /// Binding powers of `*`, `/`, `%` and `mod`, tighter than [`ADDITIVE`] and associating to the left.
-const MULTIPLICATIVE: (u8, u8) = (3, 4);
-/// Binding power of the operand of a unary `-` or `+`: looser than [`POWER`], so `-2^2` is `-(2^2)`.
-const UNARY: u8 = 5;
+const MULTIPLICATIVE: (u8, u8) = (13, 14);
+/// Binding power of the operand of a unary `-`, `+` or `!`: looser than [`POWER`], so `-2^2` is `-(2^2)`.
+const UNARY: u8 = 15;
 /// Binding powers of `^`: the left one is higher, so it associates to the right and `2^3^2` is `2^(3^2)`.
-const POWER: (u8, u8) = (8, 7);
+const POWER: (u8, u8) = (18, 17);
 /// Binding power of a postfix `%` percentage, the tightest of all.
-const PERCENTAGE: u8 = 9;
+const PERCENTAGE: u8 = 19;
 
 /// The state of one evaluation.
+///
+/// Errors come in two sorts. Syntax errors, [`ErrorKind::TooDeep`], [`ErrorKind::TooManyArguments`] and
+/// [`ErrorKind::InvalidNumber`] depend only on the text and are returned at once, wherever they are. The others
+/// depend on values or on the context: the first one is kept in [`Parser::failure`] and the rest of the input is
+/// still parsed, without computing, so that a syntax error further on takes precedence.
 struct Parser<'i, 'e, 'c, N, C: ?Sized, const ARGUMENTS: usize> {
     /// Source of the tokens after [`Parser::token`].
     lexer: Lexer<'i>,
@@ -131,6 +236,10 @@ struct Parser<'i, 'e, 'c, N, C: ?Sized, const ARGUMENTS: usize> {
     end: usize,
     /// How many [`Parser::expression`] calls are running.
     depth: usize,
+    /// Whether values are not computed, in a branch not taken or after a [`Parser::failure`].
+    skipping: bool,
+    /// The first error that depends on values or on the context.
+    failure: Option<Error>,
     /// Limits, syntax and context.
     evaluator: &'e Evaluator<'c, C, ARGUMENTS>,
     /// The number type values are computed in.
@@ -153,18 +262,74 @@ impl<'i, N: Number, C: Context<N> + ?Sized, const ARGUMENTS: usize>
         Error::new(kind, Span::new(start, self.end))
     }
 
-    /// Returns the binary operator of the current token and its binding powers, if it is one.
+    /// Records `error` as the [`Parser::failure`] and stops computing.
+    #[cold]
+    fn fail(&mut self, error: Error) -> N {
+        self.failure = Some(error);
+        self.skipping = true;
+        N::default()
+    }
+
+    /// Returns the result of `operation`, or records its error spanning from `start`.
+    ///
+    /// Returns a placeholder without running `operation` when values are not computed.
+    fn compute(&mut self, start: usize, operation: impl FnOnce() -> Result<N, ErrorKind>) -> N {
+        if self.skipping {
+            return N::default();
+        }
+        match operation() {
+            Ok(value) => value,
+            Err(kind) => self.fail(self.at(start, kind)),
+        }
+    }
+
+    /// Returns whether `value` is true, that is not zero, or `None` when values are not computed or on error.
+    fn truth(&mut self, start: usize, value: N) -> Option<bool> {
+        if self.skipping {
+            return None;
+        }
+        match value.is_zero() {
+            Ok(zero) => Some(!zero),
+            Err(kind) => {
+                self.fail(self.at(start, kind));
+                None
+            }
+        }
+    }
+
+    /// Parses an expression like [`Parser::expression`] without computing it nor asking the context anything.
+    fn skip(&mut self, minimum: u8) -> Result<N, Error> {
+        let skipping = core::mem::replace(&mut self.skipping, true);
+        let outcome = self.expression(minimum);
+        self.skipping = skipping;
+        outcome.map(|_| N::default())
+    }
+
+    /// Returns the infix or postfix operator of the current token and its binding powers, if it is one.
     fn infix(&self) -> Option<(Operator, (u8, u8))> {
         match self.token.kind {
             Kind::Plus => Some((Operator::Add, ADDITIVE)),
             Kind::Minus => Some((Operator::Subtract, ADDITIVE)),
             Kind::Star => Some((Operator::Multiply, MULTIPLICATIVE)),
             Kind::Slash => Some((Operator::Divide, MULTIPLICATIVE)),
-            Kind::Percent if self.evaluator.percent_sign == PercentSign::Remainder => {
-                Some((Operator::Remainder, MULTIPLICATIVE))
-            }
+            Kind::Percent => Some(match self.evaluator.percent_sign {
+                PercentSign::Remainder => (Operator::Remainder, MULTIPLICATIVE),
+                PercentSign::Percentage => (Operator::Percentage, (PERCENTAGE, PERCENTAGE)),
+            }),
             Kind::Name("mod") => Some((Operator::Remainder, MULTIPLICATIVE)),
             Kind::Caret => Some((Operator::Power, POWER)),
+            Kind::Less => Some((Operator::Less, RELATIONAL)),
+            Kind::LessEqual => Some((Operator::LessEqual, RELATIONAL)),
+            Kind::Greater => Some((Operator::Greater, RELATIONAL)),
+            Kind::GreaterEqual => Some((Operator::GreaterEqual, RELATIONAL)),
+            Kind::Equal => Some((Operator::Equal, EQUALITY)),
+            Kind::NotEqual => Some((Operator::NotEqual, EQUALITY)),
+            Kind::And => Some((Operator::And, AND)),
+            Kind::Or => Some((Operator::Or, OR)),
+            Kind::Question => Some((Operator::Conditional, CONDITIONAL)),
+            Kind::Name(_) | Kind::LeftParenthesis if self.evaluator.implicit_multiplication => {
+                Some((Operator::ImplicitMultiply, MULTIPLICATIVE))
+            }
             _ => None,
         }
     }
@@ -180,63 +345,106 @@ impl<'i, N: Number, C: Context<N> + ?Sized, const ARGUMENTS: usize>
         self.depth += 1;
         let start = self.token.span.start;
         let mut left = self.prefix()?;
-        loop {
-            if self.token.kind == Kind::Percent
-                && self.evaluator.percent_sign == PercentSign::Percentage
-            {
-                if PERCENTAGE < minimum {
-                    break;
-                }
-                self.advance()?;
-                let hundred = N::parse("100").ok_or(self.at(start, ErrorKind::Overflow))?;
-                left = left.divide(hundred).map_err(|kind| self.at(start, kind))?;
-                continue;
-            }
-            let Some((operator, (left_power, right_power))) = self.infix() else {
-                break;
-            };
+        while let Some((operator, (left_power, right_power))) = self.infix() {
             if left_power < minimum {
                 break;
             }
-            self.advance()?;
-            let right = self.expression(right_power)?;
-            left = match operator {
-                Operator::Add => left.add(right),
-                Operator::Subtract => left.subtract(right),
-                Operator::Multiply => left.multiply(right),
-                Operator::Divide => left.divide(right),
-                Operator::Remainder => left.remainder(right),
-                Operator::Power => left.power(right),
+            if !matches!(operator, Operator::ImplicitMultiply) {
+                self.advance()?;
             }
-            .map_err(|kind| self.at(start, kind))?;
+            left = match operator {
+                Operator::Percentage => self.compute(start, || {
+                    left.divide(N::parse("100").ok_or(ErrorKind::Overflow)?)
+                }),
+                Operator::Conditional => self.conditional(start, left)?,
+                Operator::And | Operator::Or => self.logic(start, operator, left, right_power)?,
+                _ => {
+                    let right = self.expression(right_power)?;
+                    self.compute(start, || operator.apply(left, right))
+                }
+            };
         }
         self.depth -= 1;
         Ok(left)
     }
 
+    /// Evaluates the right operand of `&&` or `||` if `left` does not decide the result, and skips it otherwise.
+    fn logic(
+        &mut self,
+        start: usize,
+        operator: Operator,
+        left: N,
+        right_power: u8,
+    ) -> Result<N, Error> {
+        let decided = match (operator, self.truth(start, left)) {
+            (Operator::And, Some(false)) => Some(false),
+            (Operator::Or, Some(true)) => Some(true),
+            _ => None,
+        };
+        if let Some(result) = decided {
+            self.skip(right_power)?;
+            return Ok(self.compute(start, || N::from_bool(result)));
+        }
+        let right = self.expression(right_power)?;
+        Ok(match self.truth(start, right) {
+            Some(result) => self.compute(start, || N::from_bool(result)),
+            None => N::default(),
+        })
+    }
+
+    /// Evaluates the branch of `condition ? then : otherwise` that `condition` selects, after the `?`, and skips
+    /// the other.
+    fn conditional(&mut self, start: usize, condition: N) -> Result<N, Error> {
+        let truth = self.truth(start, condition);
+        let then = if truth == Some(false) {
+            self.skip(0)?
+        } else {
+            self.expression(0)?
+        };
+        match self.token.kind {
+            Kind::Colon => self.advance().map(drop)?,
+            Kind::End => return Err(Error::new(ErrorKind::UnexpectedEnd, self.token.span)),
+            _ => return Err(Error::new(ErrorKind::UnexpectedToken, self.token.span)),
+        }
+        let otherwise = if truth == Some(true) {
+            self.skip(CONDITIONAL.1)?
+        } else {
+            self.expression(CONDITIONAL.1)?
+        };
+        Ok(if truth == Some(true) { then } else { otherwise })
+    }
+
     /// Evaluates a single operand: a number, a variable, a call, a parenthesized expression or a unary operation.
     fn prefix(&mut self) -> Result<N, Error> {
         let token = self.advance()?;
+        let start = token.span.start;
         match token.kind {
             Kind::Number(literal) => {
                 N::parse(literal).ok_or(Error::new(ErrorKind::InvalidNumber, token.span))
             }
             Kind::Name(name) if self.token.kind == Kind::LeftParenthesis => self.call(name, token),
-            Kind::Name(name) => self
-                .evaluator
-                .context
-                .variable(name)
-                .ok_or(Error::new(ErrorKind::UnknownVariable, token.span)),
+            Kind::Name(_) if self.skipping => Ok(N::default()),
+            Kind::Name(name) => Ok(match self.evaluator.context.variable(name) {
+                Some(value) => value,
+                None => self.fail(Error::new(ErrorKind::UnknownVariable, token.span)),
+            }),
             Kind::LeftParenthesis => {
                 let value = self.expression(0)?;
                 self.close(token)?;
                 Ok(value)
             }
-            Kind::Minus => self
-                .expression(UNARY)?
-                .negate()
-                .map_err(|kind| self.at(token.span.start, kind)),
+            Kind::Minus => {
+                let operand = self.expression(UNARY)?;
+                Ok(self.compute(start, || operand.negate()))
+            }
             Kind::Plus => self.expression(UNARY),
+            Kind::Not => {
+                let operand = self.expression(UNARY)?;
+                Ok(match self.truth(start, operand) {
+                    Some(truth) => self.compute(start, || N::from_bool(!truth)),
+                    None => N::default(),
+                })
+            }
             Kind::End => Err(Error::new(ErrorKind::UnexpectedEnd, token.span)),
             _ => Err(Error::new(ErrorKind::UnexpectedToken, token.span)),
         }
@@ -275,10 +483,16 @@ impl<'i, N: Number, C: Context<N> + ?Sized, const ARGUMENTS: usize>
             }
         }
         self.close(opening)?;
-        match self.evaluator.context.call(name, &arguments[..count]) {
-            Some(result) => result.map_err(|kind| self.at(name_token.span.start, kind)),
-            None => Err(Error::new(ErrorKind::UnknownFunction, name_token.span)),
+        if self.skipping {
+            return Ok(N::default());
         }
+        Ok(
+            match self.evaluator.context.call(name, &arguments[..count]) {
+                Some(Ok(value)) => value,
+                Some(Err(kind)) => self.fail(self.at(name_token.span.start, kind)),
+                None => self.fail(Error::new(ErrorKind::UnknownFunction, name_token.span)),
+            },
+        )
     }
 }
 

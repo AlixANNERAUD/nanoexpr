@@ -115,13 +115,16 @@ typedef struct nanoexpr_options {
     bool percentage;
     /** @brief Most levels of nested parentheses, calls and operators, which bounds the stack used. */
     size_t max_depth;
+    /** @brief Whether an operand directly followed by a name or a `(` multiplies them, as in `2pi`, `2x` or
+     *         `2(x + 1)`, with the precedence of `*`. A name followed by `(` remains a function call. */
+    bool implicit_multiplication;
 } nanoexpr_options;
 
 /**
  * @brief Returns the default options.
  *
- * No callbacks, built-in constants and functions, `%` as the remainder and a depth limit of
- * ::NANOEXPR_DEFAULT_MAX_DEPTH.
+ * No callbacks, built-in constants and functions, `%` as the remainder, a depth limit of
+ * ::NANOEXPR_DEFAULT_MAX_DEPTH and no implicit multiplication.
  */
 nanoexpr_options nanoexpr_default_options(void);
 

@@ -57,8 +57,11 @@ Use it for:
   `min`, `max`, `clamp`, rounding and more.
 - **Errors you can show.** A `Copy` error with a kind to match on (and translate) and the byte span of the input
   that caused it. Division by zero, domain errors and overflow are errors, not silent `NaN` or infinities.
-- **Calculator-friendly syntax.** `^` and `**` are right-associative (`2^3^2 = 512`), `-2^2 = -4`, and `%` can be a
-  percentage (`200 * 15% = 30`) instead of the remainder.
+- **Calculator-friendly syntax.** `^` and `**` are right-associative (`2^3^2 = 512`), `-2^2 = -4`, `%` can be a
+  percentage (`200 * 15% = 30`) instead of the remainder, and implicit multiplication (`2pi`, `3(x + 1)`) can be
+  turned on.
+- **Comparisons and logic for rules.** `<`, `==`, `&&`, `||`, `!` and `c ? a : b` with C precedences, giving `1` or
+  `0`, and short-circuiting so `x != 0 && 1 / x > 2` is no division by zero.
 - **C and C++ bindings** with a header and a CMake project, still allocation-free.
 - **No dependencies** besides the optional `libm`, and no `unsafe` code in the evaluator.
 
@@ -117,6 +120,19 @@ assert_eq!(error.span, Span::new(4, 15));
 assert_eq!(error.to_string(), "division by zero at 4..15");
 ```
 
+### Thresholds and rules
+
+Comparisons give `1` or `0`, and `&&`, `||` and `? :` skip what they do not need, so a rule can guard its own
+divisions:
+
+```rust
+let context = [("temperature", 35.0), ("humidity", 20.0), ("flow", 0.0)];
+
+assert_eq!(nanoexpr::evaluate_with("temperature > 30 && humidity < 40", &context), Ok(1.0));
+assert_eq!(nanoexpr::evaluate_with("flow != 0 && 100 / flow > 2", &context), Ok(0.0));
+assert_eq!(nanoexpr::evaluate_with("flow > 0 ? 100 / flow : -1", &context), Ok(-1.0));
+```
+
 ### Calculator mode and limits
 
 ```rust
@@ -124,10 +140,12 @@ use nanoexpr::{Evaluator, Math, PercentSign};
 
 let calculator = Evaluator::<_, 4>::new(&Math)
     .percent_sign(PercentSign::Percentage)
+    .implicit_multiplication(true)
     .max_depth(16);
 
 assert_eq!(calculator.evaluate::<f64>("200 * 15%"), Ok(30.0));
 assert_eq!(calculator.evaluate::<f64>("10 mod 4"), Ok(2.0));
+assert_eq!(calculator.evaluate::<f64>("2(3 + 4)sqrt(4)"), Ok(28.0));
 ```
 
 The second generic parameter is the most arguments a call can take (8 by default).
@@ -242,15 +260,35 @@ From the loosest to the tightest binding:
 
 | Operators | Meaning | Associativity |
 |---|---|---|
+| `c ? a : b` | Conditional: `a` if `c` is not zero, `b` otherwise | Right |
+| `\|\|` | Logical or | Left |
+| `&&` | Logical and | Left |
+| `==` `!=` | Equal, not equal | Left |
+| `<` `<=` `>` `>=` | Comparisons | Left |
 | `+` `-` | Addition, subtraction | Left |
 | `*` `/` `%` `mod` | Multiplication, division, remainder | Left |
-| `-x` `+x` | Negation, unary plus | Prefix |
+| `-x` `+x` `!x` | Negation, unary plus, logical not | Prefix |
 | `^` `**` | Power | Right |
 | `x%` | Percentage, with `PercentSign::Percentage` | Postfix |
 | `( )` `name(a, b)` | Grouping, function call | |
 
 Numbers are written `42`, `3.14`, `.5`, `5.` or `1.5e-3`. Names start with a letter or `_` and continue with
 letters, digits or `_`.
+
+With `implicit_multiplication(true)`, off by default, a name or a `(` directly after an operand multiplies it, as on
+a calculator: `2pi`, `2x`, `3sqrt(4)`, `2(3 + 4)`, `(1 + 2)(3 + 4)` and `x y` are products. It has the precedence of
+`*`, as on TI calculators, so `1/2x` is `(1/2) * x`. A name followed by `(` stays a call, so `x(2)` calls `x`, and a
+number never multiplies implicitly, so `2 3` is still an error. `2e3` is the number `2000`, `2e` is `2 * e`.
+
+Values are always numbers, as on TI calculators and in C: comparisons give `1` or `0`, and `&&`, `||`, `!` and
+`? :` read zero as false and anything else as true. The precedences are those of C, so equality binds looser than
+the other comparisons and `a < b == c < d` compares two comparisons. Comparisons chain like in C, not like in
+Python: `3 > 2 > 1` is `(3 > 2) > 1`, which is `0`. Comparing a float `NaN`, or using it as a condition, is a
+`Domain` error rather than a silent `false`.
+
+`&&`, `||` and `? :` short-circuit: the operand they do not need is still parsed, to check its syntax, but it is
+not computed, so its division by zero or unknown variable is no error. Errors in the text itself, such as a missing
+parenthesis or an invalid number, are always reported, before any error that depends on values.
 
 ## Footprint
 
@@ -383,7 +421,8 @@ global allocator, so it runs on bare-metal microcontrollers.
 **Can a user crash the device with a malicious formula?** It is designed not to: evaluation never allocates, nesting
 depth is bounded, arithmetic is checked, and malformed, deep or overflowing input returns an error.
 
-**Is it a scripting language?** No: it evaluates numeric expressions only. For strings, booleans and assignments, see
+**Is it a scripting language?** No: it evaluates numeric expressions only, though comparisons, `&&`, `||` and
+`? :` are enough for thresholds and rules. For strings, booleans and assignments, see
 the [comparison](#comparison-with-other-rust-expression-evaluators) below for crates that do more.
 
 ## License

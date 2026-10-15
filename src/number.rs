@@ -1,5 +1,7 @@
 //! The [`Number`] trait and its implementations for primitive types.
 
+use core::cmp::Ordering;
+
 use crate::ErrorKind;
 
 /// A value type expressions are evaluated in.
@@ -8,6 +10,11 @@ use crate::ErrorKind;
 /// your own type, such as a fixed-point number, to evaluate expressions in it.
 ///
 /// Each operation returns the [`ErrorKind`] to report instead of producing a silent `NaN`, infinity or wrapped value.
+///
+/// Comparisons (`<`, `==`...) and logic operators (`&&`, `||`, `!`, `? :`) need [`Number::compare`],
+/// [`Number::is_zero`] and [`Number::from_bool`]. They have default implementations, so a type that only
+/// implements arithmetic keeps working: override [`Number::compare`] to support comparisons and logic, as the
+/// other two are derived from it.
 pub trait Number: Copy + Default {
     /// Parses a literal such as `42`, `3.5` or `1e3`, or returns `None` if the type cannot represent it.
     fn parse(literal: &str) -> Option<Self>;
@@ -25,6 +32,30 @@ pub trait Number: Copy + Default {
     fn power(self, rhs: Self) -> Result<Self, ErrorKind>;
     /// Returns `-self`.
     fn negate(self) -> Result<Self, ErrorKind>;
+
+    /// Returns how `self` orders against `rhs`.
+    ///
+    /// Return an error for values that cannot be ordered, such as [`ErrorKind::Domain`] for a float `NaN`. The
+    /// default returns [`ErrorKind::Unsupported`].
+    fn compare(self, rhs: Self) -> Result<Ordering, ErrorKind> {
+        let _ = rhs;
+        Err(ErrorKind::Unsupported)
+    }
+
+    /// Returns whether `self` is zero, which logic operators read as false.
+    ///
+    /// The default compares `self` with [`Default::default`], which it assumes to be zero.
+    fn is_zero(self) -> Result<bool, ErrorKind> {
+        self.compare(Self::default())
+            .map(|ordering| ordering == Ordering::Equal)
+    }
+
+    /// Returns `1` for `true` and `0` for `false`, the results of comparisons and logic operators.
+    ///
+    /// The default parses the literals `1` and `0`, and returns [`ErrorKind::Unsupported`] if that fails.
+    fn from_bool(value: bool) -> Result<Self, ErrorKind> {
+        Self::parse(if value { "1" } else { "0" }).ok_or(ErrorKind::Unsupported)
+    }
 }
 
 /// Implements [`Number`] and [`Checked`] for a float type, raising to a power with the `libm` function `$power`.
@@ -71,6 +102,21 @@ macro_rules! float {
 
             fn negate(self) -> Result<Self, ErrorKind> {
                 Ok(-self)
+            }
+
+            fn compare(self, rhs: Self) -> Result<Ordering, ErrorKind> {
+                self.partial_cmp(&rhs).ok_or(ErrorKind::Domain)
+            }
+
+            fn is_zero(self) -> Result<bool, ErrorKind> {
+                if self.is_nan() {
+                    return Err(ErrorKind::Domain);
+                }
+                Ok(self == 0.0)
+            }
+
+            fn from_bool(value: bool) -> Result<Self, ErrorKind> {
+                Ok(if value { 1.0 } else { 0.0 })
             }
         }
 
@@ -164,6 +210,18 @@ macro_rules! integer {
             fn negate(self) -> Result<Self, ErrorKind> {
                 (0 as $type).checked_sub(self).ok_or(ErrorKind::Overflow)
             }
+
+            fn compare(self, rhs: Self) -> Result<Ordering, ErrorKind> {
+                Ok(self.cmp(&rhs))
+            }
+
+            fn is_zero(self) -> Result<bool, ErrorKind> {
+                Ok(self == 0)
+            }
+
+            fn from_bool(value: bool) -> Result<Self, ErrorKind> {
+                Ok(Self::from(value))
+            }
         }
     )*};
 }
@@ -212,6 +270,76 @@ mod tests {
         assert_eq!(0.0_f64.power(-1.0), Err(ErrorKind::DivisionByZero));
         assert_eq!(2.0_f32.power(3.0), Ok(8.0));
         assert_eq!(f64::parse("1e3"), Some(1000.0));
+    }
+
+    #[test]
+    fn integers_compare_and_convert_booleans() {
+        assert_eq!(3_u8.compare(4), Ok(Ordering::Less));
+        assert_eq!((-1_i64).compare(-1), Ok(Ordering::Equal));
+        assert_eq!(0_u128.is_zero(), Ok(true));
+        assert_eq!((-5_i8).is_zero(), Ok(false));
+        assert_eq!(i16::from_bool(true), Ok(1));
+        assert_eq!(usize::from_bool(false), Ok(0));
+    }
+
+    #[cfg(feature = "libm")]
+    #[test]
+    fn floats_compare_and_reject_nan() {
+        assert_eq!(1.5_f64.compare(-2.0), Ok(Ordering::Greater));
+        assert_eq!((-0.0_f32).compare(0.0), Ok(Ordering::Equal));
+        assert_eq!(f64::NAN.compare(1.0), Err(ErrorKind::Domain));
+        assert_eq!(1.0_f32.compare(f32::NAN), Err(ErrorKind::Domain));
+        assert_eq!((-0.0_f64).is_zero(), Ok(true));
+        assert_eq!(f64::INFINITY.is_zero(), Ok(false));
+        assert_eq!(f32::NAN.is_zero(), Err(ErrorKind::Domain));
+        assert_eq!(f64::from_bool(true), Ok(1.0));
+        assert_eq!(f32::from_bool(false), Ok(0.0));
+    }
+
+    /// A number that implements only the required methods of [`Number`].
+    #[derive(Debug, Clone, Copy, Default, PartialEq)]
+    struct Plain(i32);
+
+    impl Number for Plain {
+        fn parse(literal: &str) -> Option<Self> {
+            literal.parse().ok().map(Self)
+        }
+
+        fn add(self, rhs: Self) -> Result<Self, ErrorKind> {
+            Ok(Self(self.0 + rhs.0))
+        }
+
+        fn subtract(self, rhs: Self) -> Result<Self, ErrorKind> {
+            Ok(Self(self.0 - rhs.0))
+        }
+
+        fn multiply(self, rhs: Self) -> Result<Self, ErrorKind> {
+            Ok(Self(self.0 * rhs.0))
+        }
+
+        fn divide(self, rhs: Self) -> Result<Self, ErrorKind> {
+            Ok(Self(self.0 / rhs.0))
+        }
+
+        fn remainder(self, rhs: Self) -> Result<Self, ErrorKind> {
+            Ok(Self(self.0 % rhs.0))
+        }
+
+        fn power(self, rhs: Self) -> Result<Self, ErrorKind> {
+            Ok(Self(self.0.pow(rhs.0.unsigned_abs())))
+        }
+
+        fn negate(self) -> Result<Self, ErrorKind> {
+            Ok(Self(-self.0))
+        }
+    }
+
+    #[test]
+    fn defaults_report_unsupported_comparisons() {
+        assert_eq!(Plain(1).compare(Plain(2)), Err(ErrorKind::Unsupported));
+        assert_eq!(Plain(1).is_zero(), Err(ErrorKind::Unsupported));
+        assert_eq!(Plain::from_bool(true), Ok(Plain(1)));
+        assert_eq!(Plain::from_bool(false), Ok(Plain(0)));
     }
 
     #[cfg(feature = "libm")]

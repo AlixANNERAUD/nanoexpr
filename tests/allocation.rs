@@ -41,6 +41,10 @@ fn evaluation_never_allocates() {
     );
     assert_eq!(allocations(|| evaluate_with::<i64, _>("1 + (2", &())), 0);
     assert_eq!(allocations(|| evaluate_with::<i64, _>("1 / 0", &())), 0);
+    assert_eq!(
+        allocations(|| evaluate_with::<i64, _>("1 / 0 > 1 || !(0 && x) ? 1 : 2", &context)),
+        0
+    );
     #[cfg(feature = "decimal")]
     assert_eq!(
         allocations(|| {
