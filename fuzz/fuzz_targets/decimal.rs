@@ -78,10 +78,10 @@ fn close(actual: f64, expected: f64, digits: u32) -> bool {
     ((actual - expected) / expected).abs() <= 10f64.powi(2 - digits as i32).max(1e-13)
 }
 
-const UNARY: [&str; 25] = [
+const UNARY: [&str; 26] = [
     "abs", "sign", "floor", "ceil", "round", "trunc", "sqrt", "cbrt", "exp", "ln", "log2", "log10",
     "log", "sin", "cos", "tan", "asin", "acos", "atan", "sinh", "cosh", "tanh", "asinh", "acosh",
-    "atanh",
+    "atanh", "fact",
 ];
 
 const BINARY: [&str; 6] = ["pow", "log", "atan2", "hypot", "min", "max"];

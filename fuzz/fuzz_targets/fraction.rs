@@ -151,7 +151,19 @@ fn arithmetic(left: Fraction, right: Fraction) {
     assert_eq!(left.compare(right), Ok(left.cmp(&right)));
     if left < right {
         let (l, r) = (left.to_f64(), right.to_f64());
-        assert!(l <= r + 4.0 * f64::EPSILON * r.abs(), "{left:?} < {right:?}");
+        assert!(
+            l <= r + 4.0 * f64::EPSILON * r.abs(),
+            "{left:?} < {right:?}"
+        );
+    }
+    let factorial = left.factorial();
+    if left.is_negative() || !left.is_integer() {
+        assert_eq!(factorial, Err(ErrorKind::Domain), "{left:?}!");
+    } else {
+        let expected = (1..=left.numerator()).try_fold(1_u64, |product, factor| {
+            product.checked_mul(factor).ok_or(ErrorKind::Overflow)
+        });
+        assert_eq!(factorial, expected.map(Fraction::from), "{left:?}!");
     }
     assert_eq!(left.power(Fraction::ONE), Ok(left));
     assert_eq!(left.power(Fraction::ZERO), Ok(Fraction::ONE));
@@ -181,6 +193,17 @@ fn exact<const D: u32, const E: i32>(left: Exact<D, E>, right: Exact<D, E>) {
         let _ = value.to_decimal();
         if let Some(fraction) = value.as_fraction() {
             valid(fraction);
+        }
+    }
+    if let Ok(value) = left.factorial() {
+        let _ = format!("{value} {value:#} {value:.5} {value:?}");
+        match left.as_fraction().map(Number::factorial) {
+            Some(Ok(fraction)) => assert_eq!(value.as_fraction(), Some(fraction), "{left:?}!"),
+            _ => assert_eq!(
+                Some(value.to_decimal()),
+                left.to_decimal().factorial().ok(),
+                "{left:?}!"
+            ),
         }
     }
     assert_eq!(results[0], right.add(left));
