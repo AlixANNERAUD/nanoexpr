@@ -56,6 +56,54 @@ pub trait Number: Copy + Default {
     fn from_bool(value: bool) -> Result<Self, ErrorKind> {
         Self::parse(if value { "1" } else { "0" }).ok_or(ErrorKind::Unsupported)
     }
+
+    /// Returns the factorial `self!`, the product `1 * 2 * ... * self`, with `0! = 1`.
+    ///
+    /// Return [`ErrorKind::Domain`] when `self` is negative or not an integer, and [`ErrorKind::Overflow`] when
+    /// the result does not fit. The default counts from zero to `self` with [`Number::add`], [`Number::compare`]
+    /// and [`Number::from_bool`], multiplying as it goes, so it needs [`Number::compare`] and rounds each product
+    /// as [`Number::multiply`] does. It gives up with [`ErrorKind::Overflow`] after 10 000 multiplications, so a
+    /// type with a huge or unbounded range cannot compute for ever. Override it to round only once, as `Decimal`
+    /// does.
+    fn factorial(self) -> Result<Self, ErrorKind> {
+        factorial(self)
+    }
+}
+
+/// Most multiplications [`factorial`] does before giving up with [`ErrorKind::Overflow`].
+///
+/// Built-in number types overflow long before, at `171!` for `f64` or `70!` for the default `Decimal`. The limit
+/// only stops number types of your own with a huge or unbounded range from computing for ever.
+pub(crate) const MAX_FACTORIAL: usize = 10_000;
+
+/// Returns `n!`, the product `1 * 2 * ... * n`, with `0! = 1`.
+///
+/// Counts from zero to `n` with [`Number::add`] and [`Number::compare`], multiplying as it goes, so the results of
+/// integer types and `Fraction` are exact, and `Decimal` and floats round each product as their multiplication
+/// does. Fails with [`ErrorKind::Domain`] when `n` is negative or not an integer, and with [`ErrorKind::Overflow`]
+/// when a product does not fit or `n` is above [`MAX_FACTORIAL`].
+fn factorial<N: Number>(n: N) -> Result<N, ErrorKind> {
+    let one = N::from_bool(true)?;
+    let mut count = N::from_bool(false)?;
+    let mut product = one;
+    let mut ordering = count.compare(n)?;
+    let mut steps = 0;
+    while ordering == Ordering::Less {
+        if steps == MAX_FACTORIAL {
+            return Err(ErrorKind::Overflow);
+        }
+        steps += 1;
+        count = count.add(one)?;
+        ordering = count.compare(n)?;
+        if ordering == Ordering::Greater {
+            break;
+        }
+        product = product.multiply(count)?;
+    }
+    match ordering {
+        Ordering::Equal => Ok(product),
+        _ => Err(ErrorKind::Domain),
+    }
 }
 
 /// Implements [`Number`] and [`Checked`] for a float type, raising to a power with the `libm` function `$power`.
@@ -343,6 +391,59 @@ mod tests {
         assert_eq!(Plain(1).is_zero(), Err(ErrorKind::Unsupported));
         assert_eq!(Plain::from_bool(true), Ok(Plain(1)));
         assert_eq!(Plain::from_bool(false), Ok(Plain(0)));
+        assert_eq!(Plain(3).factorial(), Err(ErrorKind::Unsupported));
+    }
+
+    /// A number that never overflows, saturating at `u64::MAX` instead.
+    #[derive(Debug, Clone, Copy, Default, PartialEq)]
+    struct Saturating(u64);
+
+    impl Number for Saturating {
+        fn parse(literal: &str) -> Option<Self> {
+            literal.parse().ok().map(Self)
+        }
+
+        fn add(self, rhs: Self) -> Result<Self, ErrorKind> {
+            Ok(Self(self.0.saturating_add(rhs.0)))
+        }
+
+        fn subtract(self, rhs: Self) -> Result<Self, ErrorKind> {
+            Ok(Self(self.0.saturating_sub(rhs.0)))
+        }
+
+        fn multiply(self, rhs: Self) -> Result<Self, ErrorKind> {
+            Ok(Self(self.0.saturating_mul(rhs.0)))
+        }
+
+        fn divide(self, rhs: Self) -> Result<Self, ErrorKind> {
+            Ok(Self(self.0 / rhs.0))
+        }
+
+        fn remainder(self, rhs: Self) -> Result<Self, ErrorKind> {
+            Ok(Self(self.0 % rhs.0))
+        }
+
+        fn power(self, rhs: Self) -> Result<Self, ErrorKind> {
+            Ok(Self(self.0.saturating_pow(rhs.0 as u32)))
+        }
+
+        fn negate(self) -> Result<Self, ErrorKind> {
+            Ok(self)
+        }
+
+        fn compare(self, rhs: Self) -> Result<Ordering, ErrorKind> {
+            Ok(self.0.cmp(&rhs.0))
+        }
+    }
+
+    #[test]
+    fn factorials_stop_after_a_bounded_number_of_steps() {
+        assert_eq!(Saturating(0).factorial(), Ok(Saturating(1)));
+        assert_eq!(Saturating(4).factorial(), Ok(Saturating(24)));
+        let last = MAX_FACTORIAL as u64;
+        assert_eq!(Saturating(last).factorial(), Ok(Saturating(u64::MAX)));
+        assert_eq!(Saturating(last + 1).factorial(), Err(ErrorKind::Overflow));
+        assert_eq!(Saturating(u64::MAX).factorial(), Err(ErrorKind::Overflow));
     }
 
     #[cfg(feature = "libm")]

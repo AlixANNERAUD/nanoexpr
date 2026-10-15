@@ -243,6 +243,17 @@ impl<const DIGITS: u32, const MAX_EXPONENT: i32> Number for Exact<DIGITS, MAX_EX
     fn from_bool(value: bool) -> Result<Self, ErrorKind> {
         Fraction::from_bool(value).map(Self::from)
     }
+
+    /// Computes the factorial exactly while it fits a fraction, up to `20!`, and in decimal beyond.
+    fn factorial(self) -> Result<Self, ErrorKind> {
+        if let Form::Fraction(fraction) = self.0 {
+            match fraction.factorial() {
+                Err(ErrorKind::Overflow) => {}
+                result => return result.map(Self::from),
+            }
+        }
+        self.to_decimal().factorial().map(Self::from)
+    }
 }
 
 impl<const DIGITS: u32, const MAX_EXPONENT: i32> fmt::Display for Exact<DIGITS, MAX_EXPONENT> {

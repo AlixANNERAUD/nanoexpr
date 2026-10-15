@@ -26,20 +26,24 @@ use crate::{Context, Error, ErrorKind, Evaluator, Number};
 /// | `floor`, `ceil`, `round`, `trunc` | Rounding |
 /// | `pow(x, y)`, `hypot(x, y)` | Power, length of the hypotenuse |
 /// | `min(...)`, `max(...)`, `clamp(x, low, high)` | Comparisons, `min` and `max` take one argument or more |
+/// | `fact(n)` | Factorial of a non-negative integer, the same as `n!` |
 ///
 /// Operands outside a function's domain, such as `sqrt(-1)` or `ln(0)`, give [`ErrorKind::Domain`], and finite
 /// operands whose result is infinite give [`ErrorKind::Overflow`].
 ///
-/// `f32` and `f64` call the functions of [`libm`](https://crates.io/crates/libm). `Decimal` computes every function
-/// in decimal with 36 significant digits, then rounds once to its own digits: results are correctly rounded except
-/// in rare cases, which are one unit in the last place away. Results beyond its exponent range are
-/// [`ErrorKind::Overflow`] errors and results too small for it become zero. Trigonometric functions of `Decimal`
-/// arguments of `10^343` and beyond are [`ErrorKind::Domain`] errors.
+/// `f32` and `f64` call the functions of [`libm`](https://crates.io/crates/libm), except `fact`, which multiplies
+/// the integers up to its argument, rounding each product, and has no gamma function for other arguments: they are
+/// [`ErrorKind::Domain`] errors, and factorials above `34!` for `f32` and `170!` for `f64` [`ErrorKind::Overflow`]
+/// errors. `Decimal` computes every function in decimal with 36 significant digits, then rounds once to its own
+/// digits: results are correctly rounded except in rare cases, which are one unit in the last place away. Results
+/// beyond its exponent range, such as factorials above `69!` by default, are [`ErrorKind::Overflow`] errors and
+/// results too small for it become zero. Trigonometric functions of `Decimal` arguments of `10^343` and beyond are
+/// [`ErrorKind::Domain`] errors.
 ///
 /// `Fraction` never approximates: it has no constants, and only the functions whose results are exact fractions.
-/// `abs`, `sign`, rounding, `min`, `max` and `clamp` always are, and `sqrt`, `cbrt`, `hypot` and `pow` are when
-/// their result is rational, such as `sqrt(4/9) = 2/3`. Other results, and every other function, are
-/// [`ErrorKind::Inexact`] errors.
+/// `abs`, `sign`, rounding, `min`, `max`, `clamp` and `fact` always are, and `sqrt`, `cbrt`, `hypot` and `pow` are
+/// when their result is rational, such as `sqrt(4/9) = 2/3`. Other results, and every other function, are
+/// [`ErrorKind::Inexact`] errors. Factorials above `20!` do not fit and are [`ErrorKind::Overflow`] errors.
 ///
 /// `Exact` computes a function exactly when its arguments are fractions and its result is exact, and with the
 /// `Decimal` function otherwise. Its constants are decimals, and `min`, `max` and `clamp` return one of their
@@ -68,10 +72,10 @@ use crate::{Context, Error, ErrorKind, Evaluator, Number};
 pub struct Math;
 
 /// The names of the functions of [`Math`], which take a wrong number of arguments when no other arm matches.
-const FUNCTIONS: [&str; 31] = [
+const FUNCTIONS: [&str; 32] = [
     "sqrt", "cbrt", "abs", "sign", "exp", "ln", "log2", "log10", "log", "sin", "cos", "tan",
     "asin", "acos", "atan", "atan2", "sinh", "cosh", "tanh", "asinh", "acosh", "atanh", "floor",
-    "ceil", "round", "trunc", "pow", "hypot", "min", "max", "clamp",
+    "ceil", "round", "trunc", "pow", "hypot", "min", "max", "clamp", "fact",
 ];
 
 /// Returns whether `value` is neither `NaN` nor infinite.
@@ -147,6 +151,7 @@ macro_rules! math {
                     ("round", &[x]) => Ok(round(x)),
                     ("trunc", &[x]) => Ok(trunc(x)),
                     ("pow", &[x, y]) => return Some(x.power(y)),
+                    ("fact", &[x]) => return Some(x.factorial()),
                     ("hypot", &[x, y]) => Ok(hypot(x, y)),
                     ("min", &[first, ref rest @ ..]) => Ok(rest.iter().fold(first, |a, b| a.min(*b))),
                     ("max", &[first, ref rest @ ..]) => Ok(rest.iter().fold(first, |a, b| a.max(*b))),
@@ -231,6 +236,7 @@ impl<const DIGITS: u32, const MAX_EXPONENT: i32> Context<Decimal<DIGITS, MAX_EXP
             ("round", &[x]) => x.round(),
             ("trunc", &[x]) => x.trunc(),
             ("pow", &[x, y]) => x.power(y),
+            ("fact", &[x]) => x.factorial(),
             ("sqrt", &[x]) => x.sqrt(),
             ("cbrt", &[x]) => x.cbrt(),
             ("exp", &[x]) => x.exp(),
@@ -301,6 +307,7 @@ impl Context<Fraction> for Math {
             ("round", &[x]) => Ok(x.round()),
             ("trunc", &[x]) => Ok(x.trunc()),
             ("pow", &[x, y]) => x.power(y),
+            ("fact", &[x]) => x.factorial(),
             ("sqrt", &[x]) => x.root(2),
             ("cbrt", &[x]) => x.root(3),
             ("hypot", &[x, y]) => x
