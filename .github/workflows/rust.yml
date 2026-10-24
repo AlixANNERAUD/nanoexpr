@@ -24,11 +24,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt, clippy
+      - uses: jdx/mise-action@v5
 
-      - uses: Swatinem/rust-cache@v2
+      - uses: jdx/mr-boxington-action@v1
+        with:
+          cache-key-suffix: check
 
       - name: Format
         run: cargo fmt --all -- --check
@@ -69,13 +69,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.target }}
+      - uses: jdx/mise-action@v5
 
-      - uses: Swatinem/rust-cache@v2
+      - uses: jdx/mr-boxington-action@v1
         with:
-          key: ${{ matrix.target }}
+          cache-key-suffix: ${{ matrix.target }}
 
       - name: Build
         run: cargo build --target ${{ matrix.target }}
@@ -106,12 +104,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: jdx/mise-action@v5
 
-      - uses: Swatinem/rust-cache@v2
+      - uses: jdx/mr-boxington-action@v1
         with:
-          key: c-${{ matrix.compiler }}
-          workspaces: ". -> build/cargo"
+          cache-key-suffix: c-${{ matrix.compiler }}
+          github-cache-mode: objects
 
       - name: Configure
         run: cmake -S ffi -B build -DCMAKE_BUILD_TYPE=Release
@@ -124,12 +122,16 @@ jobs:
 
   msrv:
     runs-on: ubuntu-latest
+    env:
+      MISE_ENV: msrv
     steps:
       - uses: actions/checkout@v4
 
-      - uses: dtolnay/rust-toolchain@1.85
+      - uses: jdx/mise-action@v5
 
-      - uses: Swatinem/rust-cache@v2
+      - uses: jdx/mr-boxington-action@v1
+        with:
+          cache-key-suffix: msrv
 
       - name: Test
         run: cargo test --workspace
@@ -139,9 +141,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: jdx/mise-action@v5
 
-      - uses: Swatinem/rust-cache@v2
+      - uses: jdx/mr-boxington-action@v1
+        with:
+          cache-key-suffix: package
 
       - name: Package
         run: cargo package

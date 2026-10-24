@@ -25,15 +25,12 @@ jobs:
       matrix:
         target: [evaluate, compile, decimal, fraction, integer, ffi]
     env:
+      MISE_ENV: fuzz
       SECONDS_PER_TARGET: ${{ github.event_name == 'pull_request' && 60 || 1800 }}
     steps:
       - uses: actions/checkout@v4
 
-      - uses: dtolnay/rust-toolchain@nightly
-
-      - uses: taiki-e/install-action@v2
-        with:
-          tool: cargo-fuzz
+      - uses: jdx/mise-action@v5
 
       - uses: Swatinem/rust-cache@v2
         with:
