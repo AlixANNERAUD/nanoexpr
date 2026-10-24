@@ -1,0 +1,4 @@
+[tools]
+rust = { version = "latest", components = ["rustfmt", "clippy", "llvm-tools"], targets = ["thumbv6m-none-eabi", "thumbv7em-none-eabihf", "riscv32imc-unknown-none-elf", "wasm32-unknown-unknown"], mr_boxington = true }
+mr-boxington = "latest"
+"aqua:taiki-e/cargo-llvm-cov" = "latest"

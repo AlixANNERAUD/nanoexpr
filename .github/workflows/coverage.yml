@@ -21,13 +21,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: jdx/mise-action@v5
+
+      - uses: jdx/mr-boxington-action@v1
         with:
-          components: llvm-tools-preview
-
-      - uses: Swatinem/rust-cache@v2
-
-      - uses: taiki-e/install-action@cargo-llvm-cov
+          cache-key-suffix: coverage
+          github-cache-mode: objects
 
       - name: Coverage
         run: cargo llvm-cov --all-features --lcov --output-path coverage.lcov

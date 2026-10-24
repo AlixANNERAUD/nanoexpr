@@ -17,7 +17,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: jdx/mise-action@v5
 
       - name: Test
         run: cargo test
@@ -38,7 +38,7 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: jdx/mise-action@v5
 
       - name: Release
         uses: release-plz/action@v0.5
@@ -64,7 +64,7 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: jdx/mise-action@v5
 
       - name: Release PR
         uses: release-plz/action@v0.5
