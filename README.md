@@ -4,6 +4,7 @@
 [![docs.rs](https://docs.rs/nanoexpr/badge.svg)](https://docs.rs/nanoexpr)
 [![CI](https://github.com/AlixANNERAUD/nanoexpr/actions/workflows/rust.yml/badge.svg)](https://github.com/AlixANNERAUD/nanoexpr/actions/workflows/rust.yml)
 [![codecov](https://codecov.io/gh/AlixANNERAUD/nanoexpr/graph/badge.svg)](https://codecov.io/gh/AlixANNERAUD/nanoexpr)
+[![vulnerabilities](https://vulnerabilites.anneraud.fr/badges/a20b9dc12dc2545a5045174163c85f3e.svg)](https://vulnerabilites.anneraud.fr/organizations/alix_anneraud/projects/nanoexpr)
 [![no_std](https://img.shields.io/badge/no__std-no%20alloc-success)](https://docs.rs/nanoexpr)
 [![MSRV 1.85](https://img.shields.io/badge/MSRV-1.85-informational)](https://github.com/AlixANNERAUD/nanoexpr/blob/main/Cargo.toml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/AlixANNERAUD/nanoexpr/blob/main/LICENSE)
