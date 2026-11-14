@@ -28,7 +28,7 @@ jobs:
       MISE_ENV: fuzz
       SECONDS_PER_TARGET: ${{ github.event_name == 'pull_request' && 60 || 1800 }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: jdx/mise-action@v5
 
@@ -37,7 +37,7 @@ jobs:
           workspaces: fuzz
           key: ${{ matrix.target }}
 
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: fuzz/corpus/${{ matrix.target }}
           key: fuzz-corpus-${{ matrix.target }}-${{ github.run_id }}
@@ -53,7 +53,7 @@ jobs:
 
       - name: Upload the failing input
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: artifacts-${{ matrix.target }}
           path: fuzz/artifacts/${{ matrix.target }}
